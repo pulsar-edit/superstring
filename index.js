@@ -11,10 +11,6 @@ try {
 }
 
 const {TextBuffer, TextWriter, TextReader} = binding
-const {
-  load, save, baseTextMatchesFile,
-  find, findAll, findSync, findAllSync, findWordsWithSubsequenceInRange
-} = TextBuffer.prototype
 
 TextBuffer.prototype.load = function (source, options, progressCallback) {
   if (typeof options !== 'object') {
@@ -33,8 +29,7 @@ TextBuffer.prototype.load = function (source, options, progressCallback) {
 
     if (typeof source === 'string') {
       const filePath = source
-      load.call(
-        this,
+      this._load(
         completionCallback,
         progressCallback,
         discardChanges,
@@ -49,8 +44,7 @@ TextBuffer.prototype.load = function (source, options, progressCallback) {
       stream.on('error', reject)
       stream.on('end', () => {
         writer.end()
-        load.call(
-          this,
+        this._load(
           completionCallback,
           progressCallback,
           discardChanges,
@@ -70,7 +64,7 @@ TextBuffer.prototype.save = function (destination, encoding = 'UTF8') {
   return new Promise((resolve, reject) => {
     if (typeof destination === 'string') {
       const filePath = destination
-      save.call(this, filePath, encoding, (error) => {
+      this._save(filePath, encoding, (error) => {
         error ? reject(error) : resolve()
       })
     } else {
@@ -107,7 +101,7 @@ TextBuffer.prototype.find = function (pattern) {
 
 TextBuffer.prototype.findInRange = function (pattern, range) {
   return new Promise((resolve, reject) => {
-    find.call(this, pattern, (error, result) => {
+    this._find(pattern, (error, result) => {
       error ? reject(error) : resolve(result.length > 0 ? interpretRange(result) : null)
     }, range)
   })
@@ -119,7 +113,7 @@ TextBuffer.prototype.findAll = function (pattern) {
 
 TextBuffer.prototype.findAllInRange = function (pattern, range) {
   return new Promise((resolve, reject) => {
-    findAll.call(this, pattern, (error, result) => {
+    this._findAll(pattern, (error, result) => {
       error ? reject(error) : resolve(interpretRangeArray(result))
     }, range)
   })
@@ -130,16 +124,16 @@ TextBuffer.prototype.findSync = function (pattern) {
 }
 
 TextBuffer.prototype.findInRangeSync = function (pattern, range) {
-  const result = findSync.call(this, pattern, range)
+  const result = this._findSync(pattern, range)
   return result.length > 0 ? interpretRange(result) : null
 }
 
 TextBuffer.prototype.findAllSync = function (pattern) {
-  return interpretRangeArray(findAllSync.call(this, pattern, null))
+  return interpretRangeArray(this._findAllSync(pattern, null))
 }
 
 TextBuffer.prototype.findAllInRangeSync = function (pattern, range) {
-  return interpretRangeArray(findAllSync.call(this, pattern, range))
+  return interpretRangeArray(this._findAllSync(pattern, range))
 }
 
 TextBuffer.prototype.findWordsWithSubsequence = function (query, extraWordCharacters, maxCount) {
@@ -151,7 +145,7 @@ TextBuffer.prototype.findWordsWithSubsequence = function (query, extraWordCharac
 
 TextBuffer.prototype.findWordsWithSubsequenceInRange = function (query, extraWordCharacters, maxCount, range) {
   return new Promise(resolve =>
-    findWordsWithSubsequenceInRange.call(this, query, extraWordCharacters, maxCount, range, (matches, positions) => {
+    this._findWordsWithSubsequenceInRange(query, extraWordCharacters, maxCount, range, (matches, positions) => {
       if (!matches) {
         resolve(null)
         return
@@ -179,7 +173,7 @@ TextBuffer.prototype.baseTextMatchesFile = function (source, encoding = 'UTF8') 
     }
 
     if (typeof source === 'string') {
-      baseTextMatchesFile.call(this, callback, source, encoding)
+      this._baseTextMatchesFile(callback, source, encoding)
     } else {
       const stream = source
       const writer = new TextWriter(encoding)
@@ -187,7 +181,7 @@ TextBuffer.prototype.baseTextMatchesFile = function (source, encoding = 'UTF8') 
       stream.on('error', reject)
       stream.on('end', () => {
         writer.end()
-        baseTextMatchesFile.call(this, callback, writer)
+        this._baseTextMatchesFile(callback, writer)
       })
     }
   })
