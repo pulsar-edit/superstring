@@ -3,7 +3,11 @@
         {
             "target_name": "superstring",
             "dependencies": [
-                "superstring_core"
+                "superstring_core",
+                "<!(node -p \"require('node-addon-api').gyp\")"
+            ],
+            "defines": [
+              "NAPI_DISABLE_CPP_EXCEPTIONS=",
             ],
             "sources": [
                 "src/bindings/bindings.cc",
@@ -19,7 +23,8 @@
             ],
             "include_dirs": [
               "src/core",
-              "<!(node -e \"require('nan')\")"
+              "<!(node -e \"require('nan')\")",
+              "<!@(node -p \"require('node-addon-api').include\")",
             ],
         },
         {
