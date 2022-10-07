@@ -1,64 +1,57 @@
 #include "range-wrapper.h"
 #include "point-wrapper.h"
-#include "nan.h"
+#include "napi.h"
 
-using namespace v8;
+std::optional<Range> RangeWrapper::range_from_js(Napi::Value value) {
+  auto env = value.Env();
 
-static Nan::Persistent<String> start_string;
-static Nan::Persistent<String> end_string;
-static Nan::Persistent<v8::Function> constructor;
-
-optional<Range> RangeWrapper::range_from_js(Local<Value> value) {
-  Local<Object> object;
-  if (!Nan::To<Object>(value).ToLocal(&object)) {
-    Nan::ThrowTypeError("Expected an object with 'start' and 'end' properties.");
-    return optional<Range>{};
+  if (!value.IsObject()) {
+    Napi::TypeError::New(env, "Expected an object with 'start' and 'end' properties.").ThrowAsJavaScriptException();
+    return std::optional<Range>();
   }
+  Napi::Object object = value.ToObject();
 
-  auto start = PointWrapper::point_from_js(Nan::Get(object, Nan::New(start_string)).ToLocalChecked());
-  auto end = PointWrapper::point_from_js(Nan::Get(object, Nan::New(end_string)).ToLocalChecked());
-  if (start && end) {
-    return Range{*start, *end};
+  auto start = PointWrapper::point_from_js(object.Get("start"));
+  auto end = PointWrapper::point_from_js(object.Get("end"));
+  if (start.has_value() && end.has_value()) {
+    return Range{start.value(), end.value()};
   } else {
-    Nan::ThrowTypeError("Expected an object with 'start' and 'end' properties.");
-    return optional<Range>{};
+    Napi::TypeError::New(env, "Expected an object with 'start' and 'end' properties.").ThrowAsJavaScriptException();
+    return std::optional<Range>();
   }
 }
 
-void RangeWrapper::init() {
-  start_string.Reset(Nan::Persistent<String>(Nan::New("start").ToLocalChecked()));
-  end_string.Reset(Nan::Persistent<String>(Nan::New("end").ToLocalChecked()));
-
-  Local<FunctionTemplate> constructor_template = Nan::New<FunctionTemplate>(construct);
-  constructor_template->SetClassName(Nan::New<String>("Range").ToLocalChecked());
-  constructor_template->InstanceTemplate()->SetInternalFieldCount(1);
-  Nan::SetAccessor(constructor_template->InstanceTemplate(), Nan::New(start_string), get_start);
-  Nan::SetAccessor(constructor_template->InstanceTemplate(), Nan::New(end_string), get_end);
-  constructor.Reset(Nan::GetFunction(constructor_template).ToLocalChecked());
+void RangeWrapper::init(Napi::Env env, Napi::Object exports) {
+  Napi::Function func = DefineClass(env, "Range", {
+    InstanceAccessor<&RangeWrapper::get_start>("start"),
+    InstanceAccessor<&RangeWrapper::get_end>("end")
+  });
+  Napi::FunctionReference* constructor = new Napi::FunctionReference();
+  *constructor = Napi::Persistent(func);
+  exports.Set("Range", func);
 }
 
-Local<Value> RangeWrapper::from_range(Range range) {
-  Local<Object> result;
-  if (Nan::New(constructor)->NewInstance(Nan::GetCurrentContext()).ToLocal(&result)) {
-    (new RangeWrapper(range))->Wrap(result);
-    return result;
-  } else {
-    return Nan::Null();
+// Local<Value> RangeWrapper::from_range(Range range) {
+//   Local<Object> result;
+//   if (Nan::New(constructor)->NewInstance(Nan::GetCurrentContext()).ToLocal(&result)) {
+//     (new RangeWrapper(range))->Wrap(result);
+//     return result;
+//   } else {
+//     return Nan::Null();
+//   }
+// }
+//
+RangeWrapper::RangeWrapper(const Napi::CallbackInfo& info)
+      : Napi::ObjectWrap<RangeWrapper>(info) {
+  auto maybe_range = RangeWrapper::range_from_js(info[0]);
+  if(maybe_range.has_value()) {
+    this->range = maybe_range.value();
   }
 }
 
-RangeWrapper::RangeWrapper(Range range) : range(range) {}
-
-void RangeWrapper::construct(const Nan::FunctionCallbackInfo<Value> &info) {}
-
-void RangeWrapper::get_start(v8::Local<v8::String> property, const Nan::PropertyCallbackInfo<v8::Value> &info) {
-  RangeWrapper *wrapper = Nan::ObjectWrap::Unwrap<RangeWrapper>(info.This());
-  Range &range = wrapper->range;
-  info.GetReturnValue().Set(PointWrapper::from_point(range.start));
+Napi::Value RangeWrapper::get_start(const Napi::CallbackInfo &info) {
+  return Napi::Value::From(info.Env(), PointWrapper::from_point(range.start));
 }
-
-void RangeWrapper::get_end(v8::Local<v8::String> property, const Nan::PropertyCallbackInfo<v8::Value> &info) {
-  RangeWrapper *wrapper = Nan::ObjectWrap::Unwrap<RangeWrapper>(info.This());
-  Range &range = wrapper->range;
-  info.GetReturnValue().Set(PointWrapper::from_point(range.end));
+Napi::Value RangeWrapper::get_end(const Napi::CallbackInfo &info) {
+  return Napi::Value::From(info.Env(), PointWrapper::from_point(range.end));
 }

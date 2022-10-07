@@ -1,27 +1,21 @@
 #ifndef SUPERSTRING_POINT_WRAPPER_H
 #define SUPERSTRING_POINT_WRAPPER_H
 
-#include "nan.h"
-#include "optional.h"
+#include "napi.h"
 #include "point.h"
 
-class PointWrapper : public Nan::ObjectWrap {
+class PointWrapper : public Napi::ObjectWrap<PointWrapper> {
 public:
-  static void init();
-  static v8::Local<v8::Value> from_point(Point point);
-  static optional<Point> point_from_js(v8::Local<v8::Value>);
+  static void init(Napi::Env env, Napi::Object exports);
+
+  static Napi::Value from_point(Point point);
+  static std::optional<Point> point_from_js(Napi::Value);
+  PointWrapper(const Napi::CallbackInfo& info);
 
 private:
-  PointWrapper(Point point);
-
-  static void construct(const Nan::FunctionCallbackInfo<v8::Value> &info);
-
-  static void get_row(v8::Local<v8::String> property,
-                     const Nan::PropertyCallbackInfo<v8::Value> &info);
-
-  static void get_column(v8::Local<v8::String> property,
-                        const Nan::PropertyCallbackInfo<v8::Value> &info);
-
+  // static void construct(const Napi::Value &info);
+  Napi::Value get_row(const Napi::CallbackInfo &info);
+  Napi::Value get_column(const Napi::CallbackInfo &info);
   Point point;
 };
 
