@@ -10,7 +10,7 @@ class PatchWrapper : public Napi::ObjectWrap<PatchWrapper> {
  private:
   // static void construct(const Nan::FunctionCallbackInfo<v8::Value> &info);
   Napi::Value splice(const Napi::CallbackInfo &info);
-  // static void splice_old(const Nan::FunctionCallbackInfo<v8::Value> &info);
+  Napi::Value splice_old(const Napi::CallbackInfo &info);
   // static void copy(const Nan::FunctionCallbackInfo<v8::Value> &info);
   // static void invert(const Nan::FunctionCallbackInfo<v8::Value> &info);
   Napi::Value get_changes(const Napi::CallbackInfo &info);

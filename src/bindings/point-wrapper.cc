@@ -46,7 +46,7 @@ void PointWrapper::init(Napi::Env env, Napi::Object exports) {
   Napi::Function func = DefineClass(env, "Point", {
     InstanceAccessor<&PointWrapper::get_row>("row"),
     InstanceAccessor<&PointWrapper::get_column>("column"),
-    InstanceMethod<&PointWrapper::get_column>("toJSON"),
+    InstanceMethod<&PointWrapper::to_json>("toJSON"),
   });
 
   constructor = new Napi::FunctionReference();
@@ -79,7 +79,8 @@ Napi::Value PointWrapper::get_column(const Napi::CallbackInfo &info) {
   return Napi::Value::From(info.Env(), point.column);
 }
 Napi::Value PointWrapper::to_json(const Napi::CallbackInfo &info) {
-  std::ostringstream json;
-  json << "{\"row\":" << this->point.row << ", \"column\":" << this->point.column << "}";
-  return Napi::Value::From(info.Env(), json.str());
+  auto json = Napi::Object::New(info.Env());
+  json.Set("row", this->point.row);
+  json.Set("column", this->point.column);
+  return json;
 }

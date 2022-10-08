@@ -127,6 +127,7 @@ void PatchWrapper::init(Napi::Env env, Napi::Object exports) {
 
   auto func = DefineClass(env, "Patch", {
     InstanceMethod<&PatchWrapper::splice>("splice"),
+    InstanceMethod<&PatchWrapper::splice_old>("spliceOld"),
     InstanceMethod<&PatchWrapper::get_changes>("getChanges")
     // StaticMethod<&PatchWrapper::deserialize>("deserialize")
     // InstanceAccessor<&RangeWrapper::get_start>("start"),
@@ -166,6 +167,13 @@ void PatchWrapper::init(Napi::Env env, Napi::Object exports) {
 }
 //
 PatchWrapper::PatchWrapper(const Napi::CallbackInfo &info) : Napi::ObjectWrap<PatchWrapper>(info) {
+  if(info[0].IsObject()) {
+    auto param = info[0].ToObject();
+    if(param.Has("mergeAdjacentChanges")) {
+      bool merge_adjacent = param.Get("mergeAdjacentChanges").ToBoolean();
+      this->patch = Patch{ merge_adjacent };
+    }
+  }
 }
 
 //
@@ -219,7 +227,7 @@ Napi::Value PatchWrapper::splice(const Napi::CallbackInfo &info) {
       }
     }
 
-    if (!patch.splice(
+    if (!this->patch.splice(
       *start,
       *deletion_extent,
       *insertion_extent,
@@ -231,18 +239,18 @@ Napi::Value PatchWrapper::splice(const Napi::CallbackInfo &info) {
   }
   return info.Env().Undefined();
 }
-//
-// void PatchWrapper::splice_old(const Nan::FunctionCallbackInfo<Value> &info) {
-//   Patch &patch = Nan::ObjectWrap::Unwrap<PatchWrapper>(info.This())->patch;
-//
-//   optional<Point> start = PointWrapper::point_from_js(info[0]);
-//   optional<Point> deletion_extent = PointWrapper::point_from_js(info[1]);
-//   optional<Point> insertion_extent = PointWrapper::point_from_js(info[2]);
-//
-//   if (start && deletion_extent && insertion_extent) {
-//     patch.splice_old(*start, *deletion_extent, *insertion_extent);
-//   }
-// }
+
+Napi::Value PatchWrapper::splice_old(const Napi::CallbackInfo &info) {
+  auto start = PointWrapper::point_from_js(info[0]);
+  auto deletion_extent = PointWrapper::point_from_js(info[1]);
+  auto insertion_extent = PointWrapper::point_from_js(info[2]);
+  auto env = info.Env();
+
+  if (start && deletion_extent && insertion_extent) {
+    patch.splice_old(*start, *deletion_extent, *insertion_extent);
+  }
+  return env.Undefined();
+}
 //
 // void PatchWrapper::copy(const Nan::FunctionCallbackInfo<Value> &info) {
 //   Local<Object> result;
