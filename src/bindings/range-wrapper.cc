@@ -50,8 +50,8 @@ RangeWrapper::RangeWrapper(const Napi::CallbackInfo& info)
 }
 
 Napi::Value RangeWrapper::get_start(const Napi::CallbackInfo &info) {
-  return Napi::Value::From(info.Env(), PointWrapper::from_point(range.start));
+  return PointWrapper::from_point(info.Env(), range.start);
 }
 Napi::Value RangeWrapper::get_end(const Napi::CallbackInfo &info) {
-  return Napi::Value::From(info.Env(), PointWrapper::from_point(range.end));
+  return PointWrapper::from_point(info.Env(), range.end);
 }

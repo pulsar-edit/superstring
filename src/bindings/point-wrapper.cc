@@ -1,3 +1,4 @@
+#include <sstream>
 #include "point-wrapper.h"
 #include <cmath>
 #include "napi.h"
@@ -40,42 +41,45 @@ std::optional<Point> PointWrapper::point_from_js(Napi::Value value) {
   return Point(js_row.ToNumber().DoubleValue(), js_column.ToNumber().DoubleValue());
 }
 
+Napi::FunctionReference *PointWrapper::constructor;
 void PointWrapper::init(Napi::Env env, Napi::Object exports) {
   Napi::Function func = DefineClass(env, "Point", {
     InstanceAccessor<&PointWrapper::get_row>("row"),
-    InstanceAccessor<&PointWrapper::get_column>("column")
+    InstanceAccessor<&PointWrapper::get_column>("column"),
+    InstanceMethod<&PointWrapper::get_column>("toJSON"),
   });
 
-  Napi::FunctionReference* constructor = new Napi::FunctionReference();
+  constructor = new Napi::FunctionReference();
   *constructor = Napi::Persistent(func);
   exports.Set("Point", func);
-
 }
 
-// Local<Value> PointWrapper::from_point(Point point) {
-//   Local<Object> result;
-//   if (Nan::New(constructor)->NewInstance(Nan::GetCurrentContext()).ToLocal(&result)) {
-//     (new PointWrapper(point))->Wrap(result);
-//     return result;
-//   } else {
-//     return Nan::Null();
-//   }
-// }
-//
+Napi::Value PointWrapper::from_point(Napi::Env env, Point point) {
+  auto wrapped = Napi::External<Point>::New(env, &point);
+  auto values = std::initializer_list<napi_value> { wrapped };
+  return PointWrapper::constructor->New(values);
+}
+
 PointWrapper::PointWrapper(const Napi::CallbackInfo& info) : Napi::ObjectWrap<PointWrapper>(info) {
-  auto maybe_point = PointWrapper::point_from_js(info[0]);
-  if(maybe_point.has_value()) {
-    this->point = maybe_point.value();
+  if(info[0].IsExternal()) {
+    auto point = info[0].As<Napi::External<Point>>();
+    this->point = *point.Data();
+  } else {
+    auto maybe_point = PointWrapper::point_from_js(info[0]);
+    if(maybe_point.has_value()) {
+      this->point = maybe_point.value();
+    }
   }
 }
 
-// PointWrapper::PointWrapper(Point point) : point(point) {}
-//
-// void PointWrapper::construct(const Nan::FunctionCallbackInfo<Value> &info) {}
-//
 Napi::Value PointWrapper::get_row(const Napi::CallbackInfo &info) {
   return Napi::Value::From(info.Env(), point.row);
 }
 Napi::Value PointWrapper::get_column(const Napi::CallbackInfo &info) {
   return Napi::Value::From(info.Env(), point.column);
+}
+Napi::Value PointWrapper::to_json(const Napi::CallbackInfo &info) {
+  std::ostringstream json;
+  json << "{\"row\":" << this->point.row << ", \"column\":" << this->point.column << "}";
+  return Napi::Value::From(info.Env(), json.str());
 }

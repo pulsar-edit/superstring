@@ -477,8 +477,10 @@ Patch Patch::invert() {
 // Mutations
 
 bool Patch::splice(Point new_splice_start,
-                   Point new_deletion_extent, Point new_insertion_extent,
-                   optional<Text> &&deleted_text, optional<Text> &&inserted_text,
+                   Point new_deletion_extent,
+                   Point new_insertion_extent,
+                   optional<Text> &&deleted_text,
+                   optional<Text> &&inserted_text,
                    uint32_t deleted_text_size) {
   if (new_deletion_extent.is_zero() && new_insertion_extent.is_zero()) return true;
 
