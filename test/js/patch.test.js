@@ -29,8 +29,6 @@ describe('Patch', function () {
         newEnd: {row: 1, column: 13}
       }
     ])
-
-    patch.delete();
   })
 
   it('honors the mergeAdjacentChanges option set to true', function () {
@@ -56,8 +54,6 @@ describe('Patch', function () {
         newStart: {row: 0, column: 5}, newEnd: {row: 0, column: 11}
       }
     ])
-
-    patch.delete();
   })
 
   describe('.compose', () => {
@@ -95,11 +91,6 @@ describe('Patch', function () {
 
       assert.throws(() => Patch.compose([{}, {}]))
       assert.throws(() => Patch.compose([1, 'a']))
-
-      for (let patch of patches)
-        patch.delete();
-
-      composedPatch.delete();
     })
 
     it('throws an Error if the patches do not apply', () => {
@@ -169,10 +160,6 @@ describe('Patch', function () {
         newStart: {row: 0, column: 9}, newEnd: {row: 0, column: 14}
       }
     ])
-
-    patch.delete();
-    invertedPatch.delete();
-    patch2.delete();
   })
 
   it('can copy patches', function () {
@@ -186,8 +173,6 @@ describe('Patch', function () {
     patch2.splice({row: 0, column: 10}, {row: 0, column: 5}, {row: 0, column: 5})
 
     assert.deepEqual(patch2.copy().getChanges(), patch2.getChanges())
-    patch.delete();
-    patch2.delete();
   })
 
   it('can serialize/deserialize patches', () => {
@@ -207,9 +192,6 @@ describe('Patch', function () {
       oldText: 'hello',
       newText: 'world'
     }])
-
-    patch1.delete();
-    patch2.delete();
   })
 
   it('removes a change when it becomes empty', () => {
@@ -368,8 +350,6 @@ describe('Patch', function () {
         assert.deepEqual(patchCopy2.getChanges(), patch.getChanges(), seedMessage)
         assert.deepEqual(patchCopy2.changeForOldPosition(oldPoint), patch.changeForOldPosition(oldPoint), seedMessage)
       }
-
-      patch.delete();
     }
   })
 
