@@ -8,6 +8,7 @@ class PatchWrapper : public Napi::ObjectWrap<PatchWrapper> {
   PatchWrapper(const Napi::CallbackInfo &info);
 
  private:
+  static Napi::FunctionReference *constructor;
   // static void construct(const Nan::FunctionCallbackInfo<v8::Value> &info);
   Napi::Value splice(const Napi::CallbackInfo &info);
   Napi::Value splice_old(const Napi::CallbackInfo &info);
@@ -19,11 +20,10 @@ class PatchWrapper : public Napi::ObjectWrap<PatchWrapper> {
   // static void change_for_old_position(const Nan::FunctionCallbackInfo<v8::Value> &info);
   // static void change_for_new_position(const Nan::FunctionCallbackInfo<v8::Value> &info);
   // static void serialize(const Nan::FunctionCallbackInfo<v8::Value> &info);
-  static Napi::Value deserialize(const Napi::CallbackInfo &info);
-  // static void compose(const Nan::FunctionCallbackInfo<v8::Value> &info);
+  static Napi::Value compose(const Napi::CallbackInfo &info);
   // static void get_dot_graph(const Nan::FunctionCallbackInfo<v8::Value> &info);
   // static void get_json(const Nan::FunctionCallbackInfo<v8::Value> &info);
-  // static void get_change_count(const Nan::FunctionCallbackInfo<v8::Value> &info);
+  Napi::Value get_change_count(const Napi::CallbackInfo &info);
   // static void get_bounds(const Nan::FunctionCallbackInfo<v8::Value> &info);
   // static void rebalance(const Nan::FunctionCallbackInfo<v8::Value> &info);
 

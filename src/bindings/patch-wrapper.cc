@@ -1,3 +1,4 @@
+#include <iostream>
 // #include "noop.h"
 #include "patch-wrapper.h"
 // #include <memory>
@@ -121,19 +122,22 @@ class ChangeWrapper : public Napi::ObjectWrap<ChangeWrapper> {
 //
   Patch::Change change;
 };
-//
+
+Napi::FunctionReference *PatchWrapper::constructor;
 void PatchWrapper::init(Napi::Env env, Napi::Object exports) {
   ChangeWrapper::init(env);
 
   auto func = DefineClass(env, "Patch", {
     InstanceMethod<&PatchWrapper::splice>("splice"),
     InstanceMethod<&PatchWrapper::splice_old>("spliceOld"),
-    InstanceMethod<&PatchWrapper::get_changes>("getChanges")
+    InstanceMethod<&PatchWrapper::get_changes>("getChanges"),
+    InstanceMethod<&PatchWrapper::get_change_count>("getChangeCount"),
+    StaticMethod<&PatchWrapper::compose>("compose")
     // StaticMethod<&PatchWrapper::deserialize>("deserialize")
     // InstanceAccessor<&RangeWrapper::get_start>("start"),
     // InstanceAccessor<&RangeWrapper::get_end>("end")
   });
-  Napi::FunctionReference* constructor = new Napi::FunctionReference();
+  constructor = new Napi::FunctionReference();
   *constructor = Napi::Persistent(func);
   exports.Set("Patch", func);
 
@@ -167,7 +171,8 @@ void PatchWrapper::init(Napi::Env env, Napi::Object exports) {
 }
 //
 PatchWrapper::PatchWrapper(const Napi::CallbackInfo &info) : Napi::ObjectWrap<PatchWrapper>(info) {
-  if(info[0].IsObject()) {
+  if(info[0].IsExternal()) {
+  } else if(info[0].IsObject()) {
     auto param = info[0].ToObject();
     if(param.Has("mergeAdjacentChanges")) {
       bool merge_adjacent = param.Get("mergeAdjacentChanges").ToBoolean();
@@ -363,60 +368,71 @@ Napi::Value PatchWrapper::get_changes(const Napi::CallbackInfo &info) {
 // }
 //
 
-Napi::Value PatchWrapper::deserialize(const Napi::CallbackInfo &info) {
-  Napi::Object result;
-  // result.S
-  // // Local<Object> result;
-  // if (Nan::NewInstance(Nan::New(patch_wrapper_constructor)).ToLocal(&result)) {
-  //   if (info[0]->IsUint8Array()) {
-  //     auto *data = node::Buffer::Data(info[0]);
-  //
-  //     static vector<uint8_t> input;
-  //     input.assign(data, data + node::Buffer::Length(info[0]));
-  //     Deserializer deserializer(input);
-  //     PatchWrapper *wrapper = new PatchWrapper(Patch{deserializer});
-  //     wrapper->Wrap(result);
-  //     info.GetReturnValue().Set(result);
-  //   }
-  // }
-  return info.Env().Undefined();
-}
-//
-// void PatchWrapper::compose(const Nan::FunctionCallbackInfo<Value> &info) {
-//   Local<Object> result;
-//   if (Nan::NewInstance(Nan::New(patch_wrapper_constructor)).ToLocal(&result)) {
-//     Local<Array> js_patches = Local<Array>::Cast(info[0]);
-//     if (!js_patches->IsArray()) {
-//       Nan::ThrowTypeError("Compose requires an array of patches");
-//       return;
-//     }
-//
-//     Patch combination;
-//     bool left_to_right = true;
-//     for (uint32_t i = 0, n = js_patches->Length(); i < n; i++) {
-//       if (!Nan::Get(js_patches, i).ToLocalChecked()->IsObject()) {
-//         Nan::ThrowTypeError("Patch.compose must be called with an array of patches");
-//         return;
-//       }
-//
-//       Local<Object> js_patch = Local<Object>::Cast(Nan::Get(js_patches, i).ToLocalChecked());
-//       if (!Nan::New(patch_wrapper_constructor_template)->HasInstance(js_patch)) {
-//         Nan::ThrowTypeError("Patch.compose must be called with an array of patches");
-//         return;
-//       }
-//
-//       Patch &patch = Nan::ObjectWrap::Unwrap<PatchWrapper>(js_patch)->patch;
-//       if (!combination.combine(patch, left_to_right)) {
-//         Nan::ThrowTypeError(InvalidSpliceMessage);
-//         return;
-//       }
-//       left_to_right = !left_to_right;
-//     }
-//
-//     (new PatchWrapper{move(combination)})->Wrap(result);
-//     info.GetReturnValue().Set(result);
-//   }
+// Napi::Value PatchWrapper::deserialize(const Napi::CallbackInfo &info) {
+//   Napi::Object result;
+//   // result.S
+//   // // Local<Object> result;
+//   // if (Nan::NewInstance(Nan::New(patch_wrapper_constructor)).ToLocal(&result)) {
+//   //   if (info[0]->IsUint8Array()) {
+//   //     auto *data = node::Buffer::Data(info[0]);
+//   //
+//   //     static vector<uint8_t> input;
+//   //     input.assign(data, data + node::Buffer::Length(info[0]));
+//   //     Deserializer deserializer(input);
+//   //     PatchWrapper *wrapper = new PatchWrapper(Patch{deserializer});
+//   //     wrapper->Wrap(result);
+//   //     info.GetReturnValue().Set(result);
+//   //   }
+//   // }
+//   return info.Env().Undefined();
 // }
+//
+
+Napi::Value PatchWrapper::compose(const Napi::CallbackInfo &info) {
+  auto env = info.Env();
+  if(!info[0].IsArray()) {
+    Napi::Error::New(env, "Compose requires an array of patches").ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+  Napi::Array js_patches = info[0].As<Napi::Array>();
+
+
+  auto values = std::initializer_list<napi_value> { };
+  auto return_value = PatchWrapper::constructor->New(values);
+  auto combination = &PatchWrapper::Unwrap(return_value)->patch;
+  bool left_to_right = true;
+  for (uint32_t i = 0, n = js_patches.Length(); i < n; i++) {
+    Patch patch;
+    auto obj = js_patches.Get(i).ToObject();
+    if(!obj.Has("getChangeCount")) {
+    // } catch (Napi::Error _) {
+      Napi::Error::New(env, "Patch.compose must be called with an array of patches").ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    patch = std::move(PatchWrapper::Unwrap(obj)->patch);
+
+    if (!combination->combine(patch, left_to_right)) {
+      Napi::Error::New(env, "Patch does not apply").ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+    left_to_right = !left_to_right;
+  }
+
+  return return_value;
+  // auto wrapped = Napi::External<Patch>::New(env, &combination);
+  // auto values = std::initializer_list<napi_value> { wrapped };
+  // return PatchWrapper::constructor->New(values);
+
+  // std::cout << "SAT " << combination.get_change_count() << "\n";
+  // PatchWrapper::Unwrap(w)->patch = std::move(combination);
+  // std::cout << "SAT " << PatchWrapper::Unwrap(w)->patch.get_change_count() << "\n";
+  // auto w = Napi::External<Patch>::New(env, &combination);
+  // return new PatchWrapper { std::move(combination) };
+  // return Napi::External<Patch>::New(env, &combination);
+
+    // (new PatchWrapper{move(combination)})->Wrap(result);
+    // info.GetReturnValue().Set(result);
+}
 //
 // void PatchWrapper::get_dot_graph(const Nan::FunctionCallbackInfo<Value> &info) {
 //   Patch &patch = Nan::ObjectWrap::Unwrap<PatchWrapper>(info.This())->patch;
@@ -430,11 +446,11 @@ Napi::Value PatchWrapper::deserialize(const Napi::CallbackInfo &info) {
 //   info.GetReturnValue().Set(Nan::New<String>(graph).ToLocalChecked());
 // }
 //
-// void PatchWrapper::get_change_count(const Nan::FunctionCallbackInfo<Value> &info) {
-//   Patch &patch = Nan::ObjectWrap::Unwrap<PatchWrapper>(info.This())->patch;
-//   uint32_t change_count = patch.get_change_count();
-//   info.GetReturnValue().Set(Nan::New<Number>(change_count));
-// }
+Napi::Value PatchWrapper::get_change_count(const Napi::CallbackInfo &info) {
+  // std::cout << "PTR? " << (this->patch == nullptr) << "\n";
+  std::cout << "ChangeCount " << this->patch.get_change_count() << "\n";
+  return Napi::Value::From(info.Env(), this->patch.get_change_count());
+}
 //
 // void PatchWrapper::get_bounds(const Nan::FunctionCallbackInfo<Value> &info) {
 //   Patch &patch = Nan::ObjectWrap::Unwrap<PatchWrapper>(info.This())->patch;
