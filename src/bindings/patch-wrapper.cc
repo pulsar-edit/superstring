@@ -128,50 +128,33 @@ void PatchWrapper::init(Napi::Env env, Napi::Object exports) {
   ChangeWrapper::init(env);
 
   auto func = DefineClass(env, "Patch", {
+    StaticMethod<&PatchWrapper::deserialize>("deserialize"),
+    InstanceMethod<&PatchWrapper::serialize>("serialize"),
     InstanceMethod<&PatchWrapper::splice>("splice"),
     InstanceMethod<&PatchWrapper::splice_old>("spliceOld"),
+    InstanceMethod<&PatchWrapper::change_for_old_position>("changeForOldPosition"),
+    InstanceMethod<&PatchWrapper::change_for_new_position>("changeForNewPosition"),
     InstanceMethod<&PatchWrapper::get_changes>("getChanges"),
     InstanceMethod<&PatchWrapper::get_change_count>("getChangeCount"),
+    InstanceMethod<&PatchWrapper::get_changes_in_old_range>("getChangesInOldRange"),
+    InstanceMethod<&PatchWrapper::get_changes_in_new_range>("getChangesInNewRange"),
+    InstanceMethod<&PatchWrapper::invert>("invert"),
+    InstanceMethod<&PatchWrapper::copy>("copy"),
+    InstanceMethod<&PatchWrapper::rebalance>("rebalance"),
+    InstanceMethod<&PatchWrapper::get_bounds>("getBounds"),
     StaticMethod<&PatchWrapper::compose>("compose")
-    // StaticMethod<&PatchWrapper::deserialize>("deserialize")
     // InstanceAccessor<&RangeWrapper::get_start>("start"),
     // InstanceAccessor<&RangeWrapper::get_end>("end")
   });
   constructor = new Napi::FunctionReference();
   *constructor = Napi::Persistent(func);
   exports.Set("Patch", func);
-
-  // Nan::SetTemplate(constructor_template_local, Nan::New("deserialize").ToLocalChecked(), Nan::New<FunctionTemplate>(deserialize), None);
-  // Nan::SetTemplate(constructor_template_local, Nan::New("compose").ToLocalChecked(), Nan::New<FunctionTemplate>(compose), None);
-  // constructor_template_local->InstanceTemplate()->SetInternalFieldCount(1);
-  // const auto &prototype_template = constructor_template_local->PrototypeTemplate();
-  // Nan::SetTemplate(prototype_template, Nan::New("delete").ToLocalChecked(), Nan::New<FunctionTemplate>(noop), None);
-  // Nan::SetTemplate(prototype_template, Nan::New("splice").ToLocalChecked(), Nan::New<FunctionTemplate>(splice), None);
-  // Nan::SetTemplate(prototype_template, Nan::New("spliceOld").ToLocalChecked(), Nan::New<FunctionTemplate>(splice_old), None);
-  // Nan::SetTemplate(prototype_template, Nan::New("copy").ToLocalChecked(), Nan::New<FunctionTemplate>(copy), None);
-  // Nan::SetTemplate(prototype_template, Nan::New("invert").ToLocalChecked(), Nan::New<FunctionTemplate>(invert), None);
-  // Nan::SetTemplate(prototype_template, Nan::New("getChanges").ToLocalChecked(), Nan::New<FunctionTemplate>(get_changes), None);
-  // Nan::SetTemplate(prototype_template, Nan::New("getChangesInOldRange").ToLocalChecked(),
-  //                         Nan::New<FunctionTemplate>(get_changes_in_old_range), None);
-  // Nan::SetTemplate(prototype_template, Nan::New("getChangesInNewRange").ToLocalChecked(),
-  //                         Nan::New<FunctionTemplate>(get_changes_in_new_range), None);
-  // Nan::SetTemplate(prototype_template, Nan::New("changeForOldPosition").ToLocalChecked(),
-  //                         Nan::New<FunctionTemplate>(change_for_old_position), None);
-  // Nan::SetTemplate(prototype_template, Nan::New("changeForNewPosition").ToLocalChecked(),
-  //                         Nan::New<FunctionTemplate>(change_for_new_position), None);
-  // Nan::SetTemplate(prototype_template, Nan::New("serialize").ToLocalChecked(), Nan::New<FunctionTemplate>(serialize), None);
-  // Nan::SetTemplate(prototype_template, Nan::New("getDotGraph").ToLocalChecked(), Nan::New<FunctionTemplate>(get_dot_graph), None);
-  // Nan::SetTemplate(prototype_template, Nan::New("getJSON").ToLocalChecked(), Nan::New<FunctionTemplate>(get_json), None);
-  // Nan::SetTemplate(prototype_template, Nan::New("rebalance").ToLocalChecked(), Nan::New<FunctionTemplate>(rebalance), None);
-  // Nan::SetTemplate(prototype_template, Nan::New("getChangeCount").ToLocalChecked(), Nan::New<FunctionTemplate>(get_change_count), None);
-  // Nan::SetTemplate(prototype_template, Nan::New("getBounds").ToLocalChecked(), Nan::New<FunctionTemplate>(get_bounds), None);
-  // patch_wrapper_constructor_template.Reset(constructor_template_local);
-  // patch_wrapper_constructor.Reset(Nan::GetFunction(constructor_template_local).ToLocalChecked());
-  // Nan::Set(exports, Nan::New("Patch").ToLocalChecked(), Nan::New(patch_wrapper_constructor));
 }
-//
+
 PatchWrapper::PatchWrapper(const Napi::CallbackInfo &info) : Napi::ObjectWrap<PatchWrapper>(info) {
   if(info[0].IsExternal()) {
+    auto patch = info[0].As<Napi::External<Patch>>();
+    this->patch = std::move(*patch.Data());
   } else if(info[0].IsObject()) {
     auto param = info[0].ToObject();
     if(param.Has("mergeAdjacentChanges")) {
@@ -181,32 +164,6 @@ PatchWrapper::PatchWrapper(const Napi::CallbackInfo &info) : Napi::ObjectWrap<Pa
   }
 }
 
-//
-// Local<Value> PatchWrapper::from_patch(Patch &&patch) {
-//   Local<Object> result;
-//   if (Nan::NewInstance(Nan::New(patch_wrapper_constructor)).ToLocal(&result)) {
-//     (new PatchWrapper(move(patch)))->Wrap(result);
-//     return result;
-//   } else {
-//     return Nan::Null();
-//   }
-// }
-//
-// void PatchWrapper::construct(const Nan::FunctionCallbackInfo<Value> &info) {
-//   bool merges_adjacent_changes = true;
-//   Local<Object> options;
-//
-//   if (info.Length() > 0 && Nan::To<Object>(info[0]).ToLocal(&options)) {
-//     Local<Value> js_merge_adjacent_changes;
-//     if (Nan::Get(options, Nan::New("mergeAdjacentChanges").ToLocalChecked()).ToLocal(&js_merge_adjacent_changes)) {
-//       merges_adjacent_changes = Nan::To<bool>(js_merge_adjacent_changes).FromMaybe(false);
-//     }
-//   }
-//   PatchWrapper *patch = new PatchWrapper(Patch{merges_adjacent_changes});
-//   patch->Wrap(info.This());
-// }
-//
-// Patch from_js(
 Napi::Value PatchWrapper::splice(const Napi::CallbackInfo &info) {
   auto start = PointWrapper::point_from_js(info[0]);
   auto deletion_extent = PointWrapper::point_from_js(info[1]);
@@ -256,27 +213,21 @@ Napi::Value PatchWrapper::splice_old(const Napi::CallbackInfo &info) {
   }
   return env.Undefined();
 }
-//
-// void PatchWrapper::copy(const Nan::FunctionCallbackInfo<Value> &info) {
-//   Local<Object> result;
-//   if (Nan::NewInstance(Nan::New(patch_wrapper_constructor)).ToLocal(&result)) {
-//     Patch &patch = Nan::ObjectWrap::Unwrap<PatchWrapper>(info.This())->patch;
-//     auto wrapper = new PatchWrapper{patch.copy()};
-//     wrapper->Wrap(result);
-//     info.GetReturnValue().Set(result);
-//   }
-// }
-//
-// void PatchWrapper::invert(const Nan::FunctionCallbackInfo<Value> &info) {
-//   Local<Object> result;
-//   if (Nan::NewInstance(Nan::New(patch_wrapper_constructor)).ToLocal(&result)) {
-//     Patch &patch = Nan::ObjectWrap::Unwrap<PatchWrapper>(info.This())->patch;
-//     auto wrapper = new PatchWrapper{patch.invert()};
-//     wrapper->Wrap(result);
-//     info.GetReturnValue().Set(result);
-//   }
-// }
-//
+
+Napi::Value PatchWrapper::copy(const Napi::CallbackInfo &info) {
+  auto copied = patch.copy();
+  auto wrapped = Napi::External<Patch>::New(info.Env(), &copied);
+  auto result = PatchWrapper::constructor->New({ wrapped });
+  return result;
+}
+
+Napi::Value PatchWrapper::invert(const Napi::CallbackInfo &info) {
+  auto inverted = patch.invert();
+  auto wrapped = Napi::External<Patch>::New(info.Env(), &inverted);
+  auto result = PatchWrapper::constructor->New({ wrapped });
+  return result;
+}
+
 Napi::Value PatchWrapper::get_changes(const Napi::CallbackInfo &info) {
   auto env = info.Env();
   auto t = Napi::ObjectWrap<PatchWrapper>::Unwrap(info.This().ToObject());
@@ -289,104 +240,87 @@ Napi::Value PatchWrapper::get_changes(const Napi::CallbackInfo &info) {
   }
   return js_result;
 }
-//
-// void PatchWrapper::get_changes_in_old_range(const Nan::FunctionCallbackInfo<Value> &info) {
-//   Patch &patch = Nan::ObjectWrap::Unwrap<PatchWrapper>(info.This())->patch;
-//
-//   optional<Point> start = PointWrapper::point_from_js(info[0]);
-//   optional<Point> end = PointWrapper::point_from_js(info[1]);
-//
-//   if (start && end) {
-//     Local<Array> js_result = Nan::New<Array>();
-//
-//     size_t i = 0;
-//     for (auto change : patch.grab_changes_in_old_range(*start, *end)) {
-//       Nan::Set(js_result, i++, ChangeWrapper::FromChange(change));
-//     }
-//
-//     info.GetReturnValue().Set(js_result);
-//   }
-// }
-//
-// void PatchWrapper::get_changes_in_new_range(const Nan::FunctionCallbackInfo<Value> &info) {
-//   Patch &patch = Nan::ObjectWrap::Unwrap<PatchWrapper>(info.This())->patch;
-//
-//   optional<Point> start = PointWrapper::point_from_js(info[0]);
-//   optional<Point> end = PointWrapper::point_from_js(info[1]);
-//
-//   if (start && end) {
-//     Local<Array> js_result = Nan::New<Array>();
-//
-//     size_t i = 0;
-//     for (auto change : patch.grab_changes_in_new_range(*start, *end)) {
-//       Nan::Set(js_result, i++, ChangeWrapper::FromChange(change));
-//     }
-//
-//     info.GetReturnValue().Set(js_result);
-//   }
-// }
-//
-// void PatchWrapper::change_for_old_position(const Nan::FunctionCallbackInfo<Value> &info) {
-//   Patch &patch = Nan::ObjectWrap::Unwrap<PatchWrapper>(info.This())->patch;
-//   optional<Point> start = PointWrapper::point_from_js(info[0]);
-//   if (start) {
-//     auto change = patch.grab_change_starting_before_old_position(*start);
-//     if (change) {
-//       info.GetReturnValue().Set(ChangeWrapper::FromChange(*change));
-//     } else {
-//       info.GetReturnValue().Set(Nan::Undefined());
-//     }
-//   }
-// }
-//
-// void PatchWrapper::change_for_new_position(const Nan::FunctionCallbackInfo<Value> &info) {
-//   Patch &patch = Nan::ObjectWrap::Unwrap<PatchWrapper>(info.This())->patch;
-//   optional<Point> start = PointWrapper::point_from_js(info[0]);
-//   if (start) {
-//     auto change = patch.grab_change_starting_before_new_position(*start);
-//     if (change) {
-//       info.GetReturnValue().Set(ChangeWrapper::FromChange(*change));
-//     } else {
-//       info.GetReturnValue().Set(Nan::Undefined());
-//     }
-//   }
-// }
-//
-// void PatchWrapper::serialize(const Nan::FunctionCallbackInfo<Value> &info) {
-//   Patch &patch = Nan::ObjectWrap::Unwrap<PatchWrapper>(info.This())->patch;
-//
-//   static vector<uint8_t> output;
-//   output.clear();
-//   Serializer serializer(output);
-//   patch.serialize(serializer);
-//   Local<Object> result;
-//   auto maybe_result =
-//       Nan::CopyBuffer(reinterpret_cast<char *>(output.data()), output.size());
-//   if (maybe_result.ToLocal(&result)) {
-//     info.GetReturnValue().Set(result);
-//   }
-// }
-//
 
-// Napi::Value PatchWrapper::deserialize(const Napi::CallbackInfo &info) {
-//   Napi::Object result;
-//   // result.S
-//   // // Local<Object> result;
-//   // if (Nan::NewInstance(Nan::New(patch_wrapper_constructor)).ToLocal(&result)) {
-//   //   if (info[0]->IsUint8Array()) {
-//   //     auto *data = node::Buffer::Data(info[0]);
-//   //
-//   //     static vector<uint8_t> input;
-//   //     input.assign(data, data + node::Buffer::Length(info[0]));
-//   //     Deserializer deserializer(input);
-//   //     PatchWrapper *wrapper = new PatchWrapper(Patch{deserializer});
-//   //     wrapper->Wrap(result);
-//   //     info.GetReturnValue().Set(result);
-//   //   }
-//   // }
-//   return info.Env().Undefined();
-// }
-//
+Napi::Value PatchWrapper::get_changes_in_old_range(const Napi::CallbackInfo &info) {
+  auto env = info.Env();
+  auto start = PointWrapper::point_from_js(info[0]);
+  auto end = PointWrapper::point_from_js(info[1]);
+  if (start.has_value() && end.has_value()) {
+    auto changes = patch.grab_changes_in_old_range(start.value(), end.value());
+    auto js_result = Napi::Array::New(env, changes.size());
+    size_t i = 0;
+    for (auto change : changes) {
+      js_result.Set(i++, ChangeWrapper::FromChange(env, change));
+    }
+    return js_result;
+  } else {
+    return env.Undefined();
+  }
+}
+
+Napi::Value PatchWrapper::get_changes_in_new_range(const Napi::CallbackInfo &info) {
+  auto env = info.Env();
+  auto start = PointWrapper::point_from_js(info[0]);
+  auto end = PointWrapper::point_from_js(info[1]);
+  if (start.has_value() && end.has_value()) {
+    auto changes = patch.grab_changes_in_new_range(start.value(), end.value());
+    auto js_result = Napi::Array::New(env, changes.size());
+    size_t i = 0;
+    for (auto change : changes) {
+      js_result.Set(i++, ChangeWrapper::FromChange(env, change));
+    }
+    return js_result;
+  } else {
+    return env.Undefined();
+  }
+}
+
+Napi::Value PatchWrapper::change_for_old_position(const Napi::CallbackInfo &info) {
+  auto start = PointWrapper::point_from_js(info[0]);
+  if (start.has_value()) {
+    auto change = patch.grab_change_starting_before_old_position(start.value());
+    if (change) {
+      return ChangeWrapper::FromChange(info.Env(), *change);
+    }
+  }
+  return info.Env().Undefined();
+}
+
+Napi::Value PatchWrapper::change_for_new_position(const Napi::CallbackInfo &info) {
+  auto start = PointWrapper::point_from_js(info[0]);
+  if (start.has_value()) {
+    auto change = patch.grab_change_starting_before_new_position(start.value());
+    if (change) {
+      return ChangeWrapper::FromChange(info.Env(), *change);
+    }
+  }
+  return info.Env().Undefined();
+}
+
+Napi::Value PatchWrapper::serialize(const Napi::CallbackInfo &info) {
+  static std::vector<uint8_t> output;
+  output.clear();
+  Serializer serializer(output);
+  patch.serialize(serializer);
+  auto result = Napi::Buffer<uint8_t>::Copy(info.Env(), output.data(), output.size());
+  return result;
+}
+
+
+Napi::Value PatchWrapper::deserialize(const Napi::CallbackInfo &info) {
+  if(info[0].IsBuffer()) {
+    auto buffer = info[0].As<Napi::Buffer<uint8_t>>();
+    auto *data = buffer.Data();
+    static std::vector<uint8_t> input;
+    input.assign(data, data + buffer.Length());
+    Deserializer deserializer(input);
+    auto new_patch = Patch{deserializer};
+    auto wrapped = Napi::External<Patch>::New(info.Env(), &new_patch);
+    return PatchWrapper::constructor->New({ wrapped });
+  } else {
+    return info.Env().Undefined();
+  }
+}
 
 Napi::Value PatchWrapper::compose(const Napi::CallbackInfo &info) {
   auto env = info.Env();
@@ -419,19 +353,6 @@ Napi::Value PatchWrapper::compose(const Napi::CallbackInfo &info) {
   }
 
   return return_value;
-  // auto wrapped = Napi::External<Patch>::New(env, &combination);
-  // auto values = std::initializer_list<napi_value> { wrapped };
-  // return PatchWrapper::constructor->New(values);
-
-  // std::cout << "SAT " << combination.get_change_count() << "\n";
-  // PatchWrapper::Unwrap(w)->patch = std::move(combination);
-  // std::cout << "SAT " << PatchWrapper::Unwrap(w)->patch.get_change_count() << "\n";
-  // auto w = Napi::External<Patch>::New(env, &combination);
-  // return new PatchWrapper { std::move(combination) };
-  // return Napi::External<Patch>::New(env, &combination);
-
-    // (new PatchWrapper{move(combination)})->Wrap(result);
-    // info.GetReturnValue().Set(result);
 }
 //
 // void PatchWrapper::get_dot_graph(const Nan::FunctionCallbackInfo<Value> &info) {
@@ -447,20 +368,18 @@ Napi::Value PatchWrapper::compose(const Napi::CallbackInfo &info) {
 // }
 //
 Napi::Value PatchWrapper::get_change_count(const Napi::CallbackInfo &info) {
-  // std::cout << "PTR? " << (this->patch == nullptr) << "\n";
-  std::cout << "ChangeCount " << this->patch.get_change_count() << "\n";
   return Napi::Value::From(info.Env(), this->patch.get_change_count());
 }
 //
-// void PatchWrapper::get_bounds(const Nan::FunctionCallbackInfo<Value> &info) {
-//   Patch &patch = Nan::ObjectWrap::Unwrap<PatchWrapper>(info.This())->patch;
-//   auto bounds = patch.get_bounds();
-//   if (bounds) {
-//     info.GetReturnValue().Set(ChangeWrapper::FromChange(*bounds));
-//   }
-// }
-//
-// void PatchWrapper::rebalance(const Nan::FunctionCallbackInfo<Value> &info) {
-//   Patch &patch = Nan::ObjectWrap::Unwrap<PatchWrapper>(info.This())->patch;
-//   patch.rebalance();
-// }
+Napi::Value PatchWrapper::get_bounds(const Napi::CallbackInfo &info) {
+  auto bounds = patch.get_bounds();
+  if (bounds) {
+    return ChangeWrapper::FromChange(info.Env(), *bounds);
+  }
+  return info.Env().Undefined();
+}
+
+Napi::Value PatchWrapper::rebalance(const Napi::CallbackInfo &info) {
+  patch.rebalance();
+  return info.Env().Undefined();
+}

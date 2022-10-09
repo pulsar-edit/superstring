@@ -31,16 +31,6 @@ void RangeWrapper::init(Napi::Env env, Napi::Object exports) {
   exports.Set("Range", func);
 }
 
-// Local<Value> RangeWrapper::from_range(Range range) {
-//   Local<Object> result;
-//   if (Nan::New(constructor)->NewInstance(Nan::GetCurrentContext()).ToLocal(&result)) {
-//     (new RangeWrapper(range))->Wrap(result);
-//     return result;
-//   } else {
-//     return Nan::Null();
-//   }
-// }
-//
 RangeWrapper::RangeWrapper(const Napi::CallbackInfo& info)
       : Napi::ObjectWrap<RangeWrapper>(info) {
   auto maybe_range = RangeWrapper::range_from_js(info[0]);
