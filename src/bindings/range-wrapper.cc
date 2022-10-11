@@ -13,8 +13,8 @@ std::optional<Range> RangeWrapper::range_from_js(Napi::Value value) {
 
   auto start = PointWrapper::point_from_js(object.Get("start"));
   auto end = PointWrapper::point_from_js(object.Get("end"));
-  if (start.has_value() && end.has_value()) {
-    return Range{start.value(), end.value()};
+  if (start && end) {
+    return Range{*start, *end};
   } else {
     Napi::TypeError::New(env, "Expected an object with 'start' and 'end' properties.").ThrowAsJavaScriptException();
     return std::optional<Range>();
@@ -34,8 +34,8 @@ void RangeWrapper::init(Napi::Env env, Napi::Object exports) {
 RangeWrapper::RangeWrapper(const Napi::CallbackInfo& info)
       : Napi::ObjectWrap<RangeWrapper>(info) {
   auto maybe_range = RangeWrapper::range_from_js(info[0]);
-  if(maybe_range.has_value()) {
-    this->range = maybe_range.value();
+  if(maybe_range) {
+    this->range = *maybe_range;
   }
 }
 

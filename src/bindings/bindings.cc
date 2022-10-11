@@ -1,6 +1,6 @@
 #include <napi.h>
-// #include "marker-index-wrapper.h"
-// #include "patch-wrapper.h"
+#include "marker-index-wrapper.h"
+#include "patch-wrapper.h"
 #include "range-wrapper.h"
 #include "point-wrapper.h"
 // #include "text-writer.h"
@@ -34,6 +34,8 @@
 Napi::Object InitNapi(Napi::Env env, Napi::Object exports) {
   PointWrapper::init(env, exports);
   RangeWrapper::init(env, exports);
+  PatchWrapper::init(env, exports);
+  MarkerIndexWrapper::init(env, exports);
   return exports;
 }
 

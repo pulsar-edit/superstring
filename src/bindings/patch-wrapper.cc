@@ -245,8 +245,8 @@ Napi::Value PatchWrapper::get_changes_in_old_range(const Napi::CallbackInfo &inf
   auto env = info.Env();
   auto start = PointWrapper::point_from_js(info[0]);
   auto end = PointWrapper::point_from_js(info[1]);
-  if (start.has_value() && end.has_value()) {
-    auto changes = patch.grab_changes_in_old_range(start.value(), end.value());
+  if (start && end) {
+    auto changes = patch.grab_changes_in_old_range(*start, *start);
     auto js_result = Napi::Array::New(env, changes.size());
     size_t i = 0;
     for (auto change : changes) {
@@ -262,8 +262,8 @@ Napi::Value PatchWrapper::get_changes_in_new_range(const Napi::CallbackInfo &inf
   auto env = info.Env();
   auto start = PointWrapper::point_from_js(info[0]);
   auto end = PointWrapper::point_from_js(info[1]);
-  if (start.has_value() && end.has_value()) {
-    auto changes = patch.grab_changes_in_new_range(start.value(), end.value());
+  if (start && end) {
+    auto changes = patch.grab_changes_in_new_range(*start, *start);
     auto js_result = Napi::Array::New(env, changes.size());
     size_t i = 0;
     for (auto change : changes) {
@@ -277,8 +277,8 @@ Napi::Value PatchWrapper::get_changes_in_new_range(const Napi::CallbackInfo &inf
 
 Napi::Value PatchWrapper::change_for_old_position(const Napi::CallbackInfo &info) {
   auto start = PointWrapper::point_from_js(info[0]);
-  if (start.has_value()) {
-    auto change = patch.grab_change_starting_before_old_position(start.value());
+  if (start) {
+    auto change = patch.grab_change_starting_before_old_position(*start);
     if (change) {
       return ChangeWrapper::FromChange(info.Env(), *change);
     }
@@ -288,8 +288,8 @@ Napi::Value PatchWrapper::change_for_old_position(const Napi::CallbackInfo &info
 
 Napi::Value PatchWrapper::change_for_new_position(const Napi::CallbackInfo &info) {
   auto start = PointWrapper::point_from_js(info[0]);
-  if (start.has_value()) {
-    auto change = patch.grab_change_starting_before_new_position(start.value());
+  if (start) {
+    auto change = patch.grab_change_starting_before_new_position(*start);
     if (change) {
       return ChangeWrapper::FromChange(info.Env(), *change);
     }
