@@ -11,8 +11,8 @@
             ],
             "sources": [
                 "src/bindings/bindings.cc",
-                # "src/bindings/marker-index-wrapper.cc",
-                # "src/bindings/patch-wrapper.cc",
+                "src/bindings/marker-index-wrapper.cc",
+                "src/bindings/patch-wrapper.cc",
                 "src/bindings/point-wrapper.cc",
                 "src/bindings/range-wrapper.cc",
                 # "src/bindings/text-buffer-wrapper.cc",
@@ -21,6 +21,8 @@
                 # "src/bindings/string-conversion.cc",
                 # "src/bindings/text-writer.cc",
             ],
+            'cflags!': [ '-fno-exceptions' ],
+            'cflags_cc!': [ '-fno-exceptions' ],
             "include_dirs": [
               "src/core",
               "<!(node -e \"require('nan')\")",
