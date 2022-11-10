@@ -21,4 +21,4 @@ void Init(Local<Object> exports) {
   TextBufferSnapshotWrapper::init();
 }
 
-NODE_MODULE(superstring, Init)
+NAN_MODULE_WORKER_ENABLED(superstring, Init)
