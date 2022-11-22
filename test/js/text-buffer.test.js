@@ -1069,6 +1069,7 @@ describe('TextBuffer', () => {
         const random = new Random(seed)
 
         const testDocument = new TestDocument(seed)
+        console.log('Seed: ', seed);
         const buffer = new TextBuffer(testDocument.getText())
 
         for (let j = 0; j < 10; j++) {
@@ -1466,6 +1467,7 @@ describe('TextBuffer', () => {
       let seed = generateSeed(MAX_INT32)
       const random = new Random(seed)
       const testDocument = new TestDocument(seed)
+      console.log('Seed: ', seed);
 
       const promises = []
       const buffer = new TextBuffer(testDocument.getText())
