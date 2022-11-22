@@ -2,20 +2,23 @@
 #define SUPERSTRING_STRING_CONVERSION_H
 
 #include <string>
-#include "nan.h"
+
+#include "napi.h"
 #include "optional.h"
 #include "text.h"
 
 namespace string_conversion {
-  v8::Local<v8::String> string_to_js(
+  Napi::String string_to_js(
+    const Napi::Env env,
     const std::u16string &,
     const char *failure_message = nullptr
   );
-  v8::Local<v8::String> char_to_js(
+  Napi::String char_to_js(
+    const Napi::Env env,
     const std::uint16_t,
     const char *failure_message = nullptr
   );
-  optional<std::u16string> string_from_js(v8::Local<v8::Value>);
+  optional<std::u16string> string_from_js(Napi::Value);
 };
 
 #endif // SUPERSTRING_STRING_CONVERSION_H

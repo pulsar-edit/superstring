@@ -6,3 +6,4 @@ build
 /browser.js
 emsdk-portable
 package-lock.json
+.vscode

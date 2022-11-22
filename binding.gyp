@@ -3,7 +3,7 @@
         {
             "target_name": "superstring",
             "dependencies": [
-                "superstring_core"
+                "superstring_core",
             ],
             "sources": [
                 "src/bindings/bindings.cc",
@@ -18,8 +18,11 @@
                 "src/bindings/text-writer.cc",
             ],
             "include_dirs": [
-              "src/core",
-              "<!(node -e \"require('nan')\")"
+                "src/core",
+                "<!(node -p \"require('node-addon-api').include_dir\")",
+            ],
+            "defines": [
+                "NAPI_DISABLE_CPP_EXCEPTIONS",
             ],
         },
         {
@@ -104,7 +107,6 @@
                         ],
                         "xcode_settings": {
                             "GCC_ENABLE_CPP_EXCEPTIONS": "YES",
-                            'MACOSX_DEPLOYMENT_TARGET': '10.8',
                         }
                     }]
                 ]
@@ -113,12 +115,16 @@
     ],
 
     "target_defaults": {
-        "cflags_cc": ["-std=c++11"],
+        "cflags_cc": ["-std=c++17"],
         "conditions": [
             ['OS=="mac"', {
+                'cflags+': ['-fvisibility=hidden'],
+                'cflags_cc+': ['-fvisibility=hidden'],
                 "xcode_settings": {
+                    'MACOSX_DEPLOYMENT_TARGET': '10.8',
                     'CLANG_CXX_LIBRARY': 'libc++',
-                    'CLANG_CXX_LANGUAGE_STANDARD':'c++11',
+                    'CLANG_CXX_LANGUAGE_STANDARD':'c++17',
+                    'GCC_SYMBOLS_PRIVATE_EXTERN': 'YES', # -fvisibility=hidden
                 }
             }],
             ['OS=="win"', {

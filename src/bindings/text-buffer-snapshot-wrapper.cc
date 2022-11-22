@@ -2,53 +2,43 @@
 #include "text-buffer-wrapper.h"
 #include "text-buffer-snapshot-wrapper.h"
 
-using namespace v8;
+using namespace Napi;
 
-static Nan::Persistent<v8::Function> snapshot_wrapper_constructor;
+FunctionReference TextBufferSnapshotWrapper::constructor;
 
-void TextBufferSnapshotWrapper::init() {
-  auto class_name = Nan::New("Snapshot").ToLocalChecked();
+void TextBufferSnapshotWrapper::init(Napi::Env env) {
+  Napi::Function func = DefineClass(env, "Snapshot", {
+    InstanceMethod<&TextBufferSnapshotWrapper::destroy>("destroy"),
+  });
 
-  auto constructor_template = Nan::New<FunctionTemplate>(construct);
-  constructor_template->SetClassName(class_name);
-  constructor_template->InstanceTemplate()->SetInternalFieldCount(1);
-
-  const auto &prototype_template = constructor_template->PrototypeTemplate();
-  Nan::SetTemplate(prototype_template, Nan::New("destroy").ToLocalChecked(), Nan::New<FunctionTemplate>(destroy), None);
-
-  snapshot_wrapper_constructor.Reset(Nan::GetFunction(constructor_template).ToLocalChecked());
+  constructor.Reset(func, 1);
 }
 
-TextBufferSnapshotWrapper::TextBufferSnapshotWrapper(Local<Object> js_buffer, void *snapshot) :
-  snapshot{snapshot} {
-  slices_ = reinterpret_cast<TextBuffer::Snapshot *>(snapshot)->primitive_chunks();
-  js_text_buffer.Reset(Isolate::GetCurrent(), js_buffer);
+TextBufferSnapshotWrapper::TextBufferSnapshotWrapper(const CallbackInfo &info) : ObjectWrap<TextBufferSnapshotWrapper>(info) {
+  if (info[0].IsObject() && info[1].IsExternal()) {
+    auto js_buffer = info[0].As<Object>();
+    auto js_wrapper = info[1].As<External<TextBuffer::Snapshot>>();
+
+    js_text_buffer.Reset(js_buffer, 1);
+    snapshot = js_wrapper.Data();
+    slices_ = snapshot->primitive_chunks();
+  }
 }
 
 TextBufferSnapshotWrapper::~TextBufferSnapshotWrapper() {
   if (snapshot) {
-    delete reinterpret_cast<TextBuffer::Snapshot *>(snapshot);
+    delete snapshot;
   }
 }
 
-Local<Value> TextBufferSnapshotWrapper::new_instance(Local<Object> js_buffer, void *snapshot) {
-  Local<Object> result;
-  if (Nan::NewInstance(Nan::New(snapshot_wrapper_constructor)).ToLocal(&result)) {
-    (new TextBufferSnapshotWrapper(js_buffer, snapshot))->Wrap(result);
-    return result;
-  } else {
-    return Nan::Null();
-  }
+Value TextBufferSnapshotWrapper::new_instance(Napi::Env env, Object js_buffer, TextBuffer::Snapshot *snapshot) {
+  auto wrapper = External<TextBuffer::Snapshot>::New(env, snapshot);
+  return constructor.New({js_buffer, wrapper});
 }
 
-void TextBufferSnapshotWrapper::construct(const Nan::FunctionCallbackInfo<Value> &info) {
-  info.GetReturnValue().Set(Nan::Null());
-}
-
-void TextBufferSnapshotWrapper::destroy(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto reader = Nan::ObjectWrap::Unwrap<TextBufferSnapshotWrapper>(Nan::To<Object>(info.This()).ToLocalChecked());
-  if (reader->snapshot) {
-    delete reinterpret_cast<TextBuffer::Snapshot *>(reader->snapshot);
-    reader->snapshot = nullptr;
+void TextBufferSnapshotWrapper::destroy(const CallbackInfo &info) {
+  if (this->snapshot) {
+    delete this->snapshot;
+    this->snapshot = nullptr;
   }
 }

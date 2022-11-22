@@ -1,7 +1,11 @@
-#include "text-buffer-wrapper.h"
 #include <sstream>
 #include <iomanip>
 #include <stdio.h>
+#include <sys/stat.h>
+
+#include "v8.h"
+#include "node.h"
+#include "text-buffer-wrapper.h"
 #include "number-conversion.h"
 #include "point-wrapper.h"
 #include "range-wrapper.h"
@@ -12,10 +16,9 @@
 #include "text-writer.h"
 #include "text-slice.h"
 #include "text-diff.h"
-#include "noop.h"
-#include <sys/stat.h>
+#include "util.h"
 
-using namespace v8;
+using namespace Napi;
 using std::move;
 using std::pair;
 using std::string;
@@ -24,6 +27,8 @@ using std::vector;
 using std::wstring;
 
 using SubsequenceMatch = TextBuffer::SubsequenceMatch;
+
+#define REGEX_CACHE_KEY "__textBufferRegex"
 
 #ifdef WIN32
 
@@ -72,226 +77,241 @@ static FILE *open_file(const std::string &name, const char *flags) {
 
 static size_t CHUNK_SIZE = 10 * 1024;
 
-class RegexWrapper : public Nan::ObjectWrap {
- public:
-  Regex regex;
-  static Nan::Persistent<Function> constructor;
-  static void construct(const Nan::FunctionCallbackInfo<v8::Value> &info) {}
+class RegexWrapper : public ObjectWrap<RegexWrapper> {
+public:
+  RegexWrapper(const CallbackInfo &info): ObjectWrap<RegexWrapper>(info) {
+    if (info[0].IsExternal()) {
+      auto wrapper = info[0].As<External<Regex>>();
+      regex.reset(wrapper.Data());
+    }
+  }
 
-  RegexWrapper(Regex &&regex) : regex{move(regex)} {}
-
-  static const Regex *regex_from_js(const Local<Value> &value) {
-    Local<String> js_pattern;
-    Local<RegExp> js_regex;
-    Local<String> cache_key = Nan::New("__textBufferRegex").ToLocalChecked();
+  static const Regex *regex_from_js(const Napi::Value &value) {
+    auto env = value.Env();
+  
+    String js_pattern;
     bool ignore_case = false;
     bool unicode = false;
+    Object js_regex;
 
-    if (value->IsString()) {
-      js_pattern = Local<String>::Cast(value);
-    } else if (value->IsRegExp()) {
-      js_regex = Local<RegExp>::Cast(value);
-      Local<Value> stored_regex = Nan::Get(js_regex, cache_key).ToLocalChecked();
-      if (!stored_regex->IsUndefined()) {
-        return &Nan::ObjectWrap::Unwrap<RegexWrapper>(Nan::To<Object>(stored_regex).ToLocalChecked())->regex;
-      }
-      js_pattern = js_regex->GetSource();
-      if (js_regex->GetFlags() & RegExp::kIgnoreCase) ignore_case = true;
-      if (js_regex->GetFlags() & RegExp::kUnicode) unicode = true;
+    if (value.IsString()) {
+      js_pattern = value.As<String>();
     } else {
-      Nan::ThrowTypeError("Argument must be a RegExp");
-      return nullptr;
+      v8::Local<v8::Value> js_regex_value = V8LocalValueFromJsValue(value);
+      if (!value.IsObject() || !js_regex_value->IsRegExp()) {
+          Napi::Error::New(env, "Argument must be a RegExp").ThrowAsJavaScriptException();
+          return nullptr;
+      }
+
+      // Check if there is any cached regex inside the js object.
+      js_regex = value.As<Object>();
+      if (js_regex.Has(REGEX_CACHE_KEY)) {
+        Napi::Value js_regex_wrapper = js_regex.Get(REGEX_CACHE_KEY);
+        if (js_regex_wrapper.IsObject()) {
+          return Unwrap(js_regex_wrapper.As<Object>())->regex.get();
+        }
+      }
+
+      // Extract necessary parameters from RegExp
+      v8::Local<v8::RegExp> v8_regex = js_regex_value.As<v8::RegExp>();
+      js_pattern = Napi::Value(env, JsValueFromV8LocalValue(v8_regex->GetSource())).As<String>();
+      if (v8_regex->GetFlags() & v8::RegExp::kIgnoreCase) ignore_case = true;
+      if (v8_regex->GetFlags() & v8::RegExp::kUnicode) unicode = true;
     }
 
+    // initialize Regex
     u16string error_message;
     optional<u16string> pattern = string_conversion::string_from_js(js_pattern);
-    Regex regex(*pattern, &error_message, ignore_case, unicode);
+    Regex regex = Regex(*pattern, &error_message, ignore_case, unicode);
     if (!error_message.empty()) {
-      Nan::ThrowError(string_conversion::string_to_js(error_message));
+      Napi::Error::New(env, string_conversion::string_to_js(env, error_message)).ThrowAsJavaScriptException();
       return nullptr;
     }
 
-    Local<Object> result;
-    if (!Nan::New(constructor)->NewInstance(Nan::GetCurrentContext()).ToLocal(&result)) {
-      Nan::ThrowError("Could not create regex wrapper");
-      return nullptr;
+    // initialize RegexWrapper
+    auto wrapper = External<Regex>::New(env, new Regex(move(regex)));
+    auto js_regex_wrapper = constructor.New({wrapper});
+
+    // cache Regex
+    if (!js_regex.IsEmpty()) {
+      js_regex.Set(REGEX_CACHE_KEY, js_regex_wrapper);
     }
 
-    auto regex_wrapper = new RegexWrapper(move(regex));
-    regex_wrapper->Wrap(result);
-    if (!js_regex.IsEmpty()) Nan::Set(js_regex, cache_key, result);
-    return &regex_wrapper->regex;
+    return Unwrap(js_regex_wrapper)->regex.get();
   }
 
-  static void init() {
-    Local<FunctionTemplate> constructor_template = Nan::New<FunctionTemplate>(construct);
-    constructor_template->SetClassName(Nan::New<String>("TextBufferRegex").ToLocalChecked());
-    constructor_template->InstanceTemplate()->SetInternalFieldCount(1);
-    constructor.Reset(Nan::GetFunction(constructor_template).ToLocalChecked());
+  static void init(Napi::Env env) {
+    Function func = DefineClass(env, "RegexWrapper", {});
+    constructor.Reset(func, 1);
   }
+
+private:
+  static FunctionReference constructor;
+  std::unique_ptr<Regex> regex;
 };
 
-Nan::Persistent<Function> RegexWrapper::constructor;
+FunctionReference RegexWrapper::constructor;
 
-class SubsequenceMatchWrapper : public Nan::ObjectWrap {
+class SubsequenceMatchWrapper : public ObjectWrap<SubsequenceMatchWrapper> {
 public:
-  static Nan::Persistent<Function> constructor;
+  static void init(Napi::Env env) {
+    Function func = DefineClass(env, "SubsequenceMatch", {
+      InstanceAccessor<&SubsequenceMatchWrapper::get_word>("word", static_cast<napi_property_attributes>(napi_enumerable | napi_configurable)),
+      InstanceAccessor<&SubsequenceMatchWrapper::get_match_indices>("matchIndices", static_cast<napi_property_attributes>(napi_enumerable | napi_configurable)),
+      InstanceAccessor<&SubsequenceMatchWrapper::get_score>("score", static_cast<napi_property_attributes>(napi_enumerable | napi_configurable)),
+    });
 
-  SubsequenceMatchWrapper(SubsequenceMatch &&match) :
-    match(std::move(match)) {}
-
-  static void init() {
-    Local<FunctionTemplate> constructor_template = Nan::New<FunctionTemplate>();
-    constructor_template->SetClassName(Nan::New<String>("SubsequenceMatch").ToLocalChecked());
-    constructor_template->InstanceTemplate()->SetInternalFieldCount(1);
-    const auto &instance_template = constructor_template->InstanceTemplate();
-
-    Nan::SetAccessor(instance_template, Nan::New("word").ToLocalChecked(), get_word);
-    Nan::SetAccessor(instance_template, Nan::New("matchIndices").ToLocalChecked(), get_match_indices);
-    Nan::SetAccessor(instance_template, Nan::New("score").ToLocalChecked(), get_score);
-
-    constructor.Reset(Nan::GetFunction(constructor_template).ToLocalChecked());
+    constructor.Reset(func, 1);
   }
 
-  static Local<Value> from_subsequence_match(SubsequenceMatch match) {
-    Local<Object> result;
-    if (Nan::NewInstance(Nan::New(constructor)).ToLocal(&result)) {
-      (new SubsequenceMatchWrapper(std::move(match)))->Wrap(result);
-      return result;
-    } else {
-      return Nan::Null();
+  static Napi::Value from_subsequence_match(Napi::Env env, SubsequenceMatch match) {
+    auto wrapper = External<TextBuffer::SubsequenceMatch>::New(env, &match);
+    return constructor.New({wrapper});
+  }
+
+  SubsequenceMatchWrapper(const CallbackInfo &info): ObjectWrap<SubsequenceMatchWrapper>(info) {
+    if (info[0].IsExternal()) {
+      auto wrapper = info[0].As<External<TextBuffer::SubsequenceMatch>>();
+      match = std::move(*wrapper.Data());
     }
   }
 
  private:
-  static void get_word(v8::Local<v8::String> property, const Nan::PropertyCallbackInfo<v8::Value> &info) {
-    SubsequenceMatch &match = Nan::ObjectWrap::Unwrap<SubsequenceMatchWrapper>(info.This())->match;
-    info.GetReturnValue().Set(string_conversion::string_to_js(match.word));
+  Napi::Value get_word(const CallbackInfo &info) {
+    return string_conversion::string_to_js(info.Env(), this->match.word);
   }
 
-  static void get_match_indices(v8::Local<v8::String> property, const Nan::PropertyCallbackInfo<v8::Value> &info) {
-    SubsequenceMatch &match = Nan::ObjectWrap::Unwrap<SubsequenceMatchWrapper>(info.This())->match;
-    Local<Array> js_result = Nan::New<Array>();
+  Napi::Value get_match_indices(const CallbackInfo &info) {
+    auto env = info.Env();
+    SubsequenceMatch &match = this->match;
+    Array js_result = Array::New(env);
     for (size_t i = 0; i < match.match_indices.size(); i++) {
-      Nan::Set(js_result, i, Nan::New<Integer>(match.match_indices[i]));
+      js_result[i] = Number::New(env, match.match_indices[i]);
     }
-    info.GetReturnValue().Set(js_result);
+    return js_result;
   }
 
-  static void get_score(v8::Local<v8::String> property, const Nan::PropertyCallbackInfo<v8::Value> &info) {
-    SubsequenceMatch &match = Nan::ObjectWrap::Unwrap<SubsequenceMatchWrapper>(info.This())->match;
-    info.GetReturnValue().Set(Nan::New<Integer>(match.score));
+  Napi::Value get_score(const CallbackInfo &info) {
+    return Number::New(info.Env(), this->match.score);
   }
 
   TextBuffer::SubsequenceMatch match;
+  static FunctionReference constructor;
 };
 
-Nan::Persistent<Function> SubsequenceMatchWrapper::constructor;
+void TextBufferWrapper::init(Object exports) {
+  auto env = exports.Env();
 
-void TextBufferWrapper::init(Local<Object> exports) {
-  Local<FunctionTemplate> constructor_template = Nan::New<FunctionTemplate>(construct);
-  constructor_template->SetClassName(Nan::New<String>("TextBuffer").ToLocalChecked());
-  constructor_template->InstanceTemplate()->SetInternalFieldCount(1);
-  const auto &prototype_template = constructor_template->PrototypeTemplate();
-  Nan::SetTemplate(prototype_template, Nan::New("delete").ToLocalChecked(), Nan::New<FunctionTemplate>(noop), None);
-  Nan::SetTemplate(prototype_template, Nan::New("getLength").ToLocalChecked(), Nan::New<FunctionTemplate>(get_length), None);
-  Nan::SetTemplate(prototype_template, Nan::New("getExtent").ToLocalChecked(), Nan::New<FunctionTemplate>(get_extent), None);
-  Nan::SetTemplate(prototype_template, Nan::New("getLineCount").ToLocalChecked(), Nan::New<FunctionTemplate>(get_line_count), None);
-  Nan::SetTemplate(prototype_template, Nan::New("hasAstral").ToLocalChecked(), Nan::New<FunctionTemplate>(has_astral), None);
-  Nan::SetTemplate(prototype_template, Nan::New("getCharacterAtPosition").ToLocalChecked(), Nan::New<FunctionTemplate>(get_character_at_position), None);
-  Nan::SetTemplate(prototype_template, Nan::New("getTextInRange").ToLocalChecked(), Nan::New<FunctionTemplate>(get_text_in_range), None);
-  Nan::SetTemplate(prototype_template, Nan::New("setTextInRange").ToLocalChecked(), Nan::New<FunctionTemplate>(set_text_in_range), None);
-  Nan::SetTemplate(prototype_template, Nan::New("getText").ToLocalChecked(), Nan::New<FunctionTemplate>(get_text), None);
-  Nan::SetTemplate(prototype_template, Nan::New("setText").ToLocalChecked(), Nan::New<FunctionTemplate>(set_text), None);
-  Nan::SetTemplate(prototype_template, Nan::New("lineForRow").ToLocalChecked(), Nan::New<FunctionTemplate>(line_for_row), None);
-  Nan::SetTemplate(prototype_template, Nan::New("lineLengthForRow").ToLocalChecked(), Nan::New<FunctionTemplate>(line_length_for_row), None);
-  Nan::SetTemplate(prototype_template, Nan::New("lineEndingForRow").ToLocalChecked(), Nan::New<FunctionTemplate>(line_ending_for_row), None);
-  Nan::SetTemplate(prototype_template, Nan::New("getLines").ToLocalChecked(), Nan::New<FunctionTemplate>(get_lines), None);
-  Nan::SetTemplate(prototype_template, Nan::New("characterIndexForPosition").ToLocalChecked(), Nan::New<FunctionTemplate>(character_index_for_position), None);
-  Nan::SetTemplate(prototype_template, Nan::New("positionForCharacterIndex").ToLocalChecked(), Nan::New<FunctionTemplate>(position_for_character_index), None);
-  Nan::SetTemplate(prototype_template, Nan::New("isModified").ToLocalChecked(), Nan::New<FunctionTemplate>(is_modified), None);
-  Nan::SetTemplate(prototype_template, Nan::New("load").ToLocalChecked(), Nan::New<FunctionTemplate>(load), None);
-  Nan::SetTemplate(prototype_template, Nan::New("baseTextMatchesFile").ToLocalChecked(), Nan::New<FunctionTemplate>(base_text_matches_file), None);
-  Nan::SetTemplate(prototype_template, Nan::New("save").ToLocalChecked(), Nan::New<FunctionTemplate>(save), None);
-  Nan::SetTemplate(prototype_template, Nan::New("loadSync").ToLocalChecked(), Nan::New<FunctionTemplate>(load_sync), None);
-  Nan::SetTemplate(prototype_template, Nan::New("serializeChanges").ToLocalChecked(), Nan::New<FunctionTemplate>(serialize_changes), None);
-  Nan::SetTemplate(prototype_template, Nan::New("deserializeChanges").ToLocalChecked(), Nan::New<FunctionTemplate>(deserialize_changes), None);
-  Nan::SetTemplate(prototype_template, Nan::New("reset").ToLocalChecked(), Nan::New<FunctionTemplate>(reset), None);
-  Nan::SetTemplate(prototype_template, Nan::New("baseTextDigest").ToLocalChecked(), Nan::New<FunctionTemplate>(base_text_digest), None);
-  Nan::SetTemplate(prototype_template, Nan::New("find").ToLocalChecked(), Nan::New<FunctionTemplate>(find), None);
-  Nan::SetTemplate(prototype_template, Nan::New("findSync").ToLocalChecked(), Nan::New<FunctionTemplate>(find_sync), None);
-  Nan::SetTemplate(prototype_template, Nan::New("findAll").ToLocalChecked(), Nan::New<FunctionTemplate>(find_all), None);
-  Nan::SetTemplate(prototype_template, Nan::New("findAllSync").ToLocalChecked(), Nan::New<FunctionTemplate>(find_all_sync), None);
-  Nan::SetTemplate(prototype_template, Nan::New("findAndMarkAllSync").ToLocalChecked(), Nan::New<FunctionTemplate>(find_and_mark_all_sync), None);
-  Nan::SetTemplate(prototype_template, Nan::New("findWordsWithSubsequenceInRange").ToLocalChecked(), Nan::New<FunctionTemplate>(find_words_with_subsequence_in_range), None);
-  Nan::SetTemplate(prototype_template, Nan::New("getDotGraph").ToLocalChecked(), Nan::New<FunctionTemplate>(dot_graph), None);
-  Nan::SetTemplate(prototype_template, Nan::New("getSnapshot").ToLocalChecked(), Nan::New<FunctionTemplate>(get_snapshot), None);
-  RegexWrapper::init();
-  SubsequenceMatchWrapper::init();
-  Nan::Set(exports, Nan::New("TextBuffer").ToLocalChecked(), Nan::GetFunction(constructor_template).ToLocalChecked());
+  RegexWrapper::init(env);
+  SubsequenceMatchWrapper::init(env);
+
+
+  Napi::Function func = DefineClass(env, "TextBuffer", {
+    InstanceMethod<&TextBufferWrapper::get_length>("getLength", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::get_extent>("getExtent", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::get_line_count>("getLineCount", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::has_astral>("hasAstral", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::get_character_at_position>("getCharacterAtPosition", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::get_text_in_range>("getTextInRange", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::set_text_in_range>("setTextInRange", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::get_text>("getText", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::set_text>("setText", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::line_for_row>("lineForRow", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::line_length_for_row>("lineLengthForRow", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::line_ending_for_row>("lineEndingForRow", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::get_lines>("getLines", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::character_index_for_position>("characterIndexForPosition", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::position_for_character_index>("positionForCharacterIndex", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::is_modified>("isModified", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::load>("load", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::base_text_matches_file>("baseTextMatchesFile", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::save>("save", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::load_sync>("loadSync", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::serialize_changes>("serializeChanges", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::deserialize_changes>("deserializeChanges", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::reset>("reset", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::base_text_digest>("baseTextDigest", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::find>("find", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::find_sync>("findSync", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::find_all>("findAll", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::find_all_sync>("findAllSync", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::find_and_mark_all_sync>("findAndMarkAllSync", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::find_words_with_subsequence_in_range>("findWordsWithSubsequenceInRange", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::dot_graph>("getDotGraph", napi_default_method),
+    InstanceMethod<&TextBufferWrapper::get_snapshot>("getSnapshot", napi_default_method),
+  });
+
+  constructor.Reset(func, 1);
+  exports.Set("TextBuffer", func);
 }
+FunctionReference SubsequenceMatchWrapper::constructor;
+FunctionReference TextBufferWrapper::constructor;
 
-void TextBufferWrapper::construct(const Nan::FunctionCallbackInfo<Value> &info) {
-  TextBufferWrapper *wrapper = new TextBufferWrapper();
-  if (info.Length() > 0 && info[0]->IsString()) {
+TextBufferWrapper::TextBufferWrapper(const CallbackInfo &info): ObjectWrap<TextBufferWrapper>(info) {
+  if (info.Length() > 0 && info[0].IsString()) {
     auto text = string_conversion::string_from_js(info[0]);
     if (text) {
-      wrapper->text_buffer.reset(move(*text));
+      this->text_buffer.reset(move(*text));
     }
   }
-  wrapper->Wrap(info.This());
 }
 
-void TextBufferWrapper::get_length(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
-  info.GetReturnValue().Set(Nan::New<Number>(text_buffer.size()));
+Napi::Value TextBufferWrapper::get_length(const CallbackInfo &info) {
+  auto &text_buffer = this->text_buffer;
+  return Number::New(info.Env(), text_buffer.size());
 }
 
-void TextBufferWrapper::get_extent(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
-  info.GetReturnValue().Set(PointWrapper::from_point(text_buffer.extent()));
+Napi::Value TextBufferWrapper::get_extent(const CallbackInfo &info) {
+  auto &text_buffer = this->text_buffer;
+  return PointWrapper::from_point(info.Env(), text_buffer.extent());
 }
 
-void TextBufferWrapper::get_line_count(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
-  info.GetReturnValue().Set(Nan::New(text_buffer.extent().row + 1));
+Napi::Value TextBufferWrapper::get_line_count(const CallbackInfo &info) {
+  auto &text_buffer = this->text_buffer;
+  return Number::New(info.Env(), text_buffer.extent().row + 1);
 }
 
-void TextBufferWrapper::has_astral(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
-  info.GetReturnValue().Set(Nan::New(text_buffer.has_astral()));
+Napi::Value TextBufferWrapper::has_astral(const CallbackInfo &info) {
+  auto &text_buffer = this->text_buffer;
+  return Boolean::New(info.Env(), text_buffer.has_astral());
 }
 
-void TextBufferWrapper::get_character_at_position(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
+Napi::Value TextBufferWrapper::get_character_at_position(const CallbackInfo &info) {
+  auto env = info.Env();
+  auto &text_buffer = this->text_buffer;
   auto point = PointWrapper::point_from_js(info[0]);
   if (point) {
-    info.GetReturnValue().Set(string_conversion::char_to_js(text_buffer.character_at(*point)));
+    return string_conversion::char_to_js(env, text_buffer.character_at(*point));
   }
+
+  return env.Undefined();
 }
 
-void TextBufferWrapper::get_text_in_range(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
+Napi::Value TextBufferWrapper::get_text_in_range(const CallbackInfo &info) {
+  auto env = info.Env();
+  auto &text_buffer = this->text_buffer;
   auto range = RangeWrapper::range_from_js(info[0]);
   if (range) {
-    info.GetReturnValue().Set(string_conversion::string_to_js(text_buffer.text_in_range(*range)));
+    return string_conversion::string_to_js(env, text_buffer.text_in_range(*range));
   }
+
+  return env.Undefined();
 }
 
-void TextBufferWrapper::get_text(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
-  info.GetReturnValue().Set(string_conversion::string_to_js(
+Napi::Value TextBufferWrapper::get_text(const CallbackInfo &info) {
+  auto &text_buffer = this->text_buffer;
+  return string_conversion::string_to_js(
+    info.Env(),
     text_buffer.text(),
     "This buffer's content is too large to fit into a string.\n"
     "\n"
     "Consider using APIs like `getTextInRange` to access the data you need."
-  ));
+  );
 }
 
-void TextBufferWrapper::set_text_in_range(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto text_buffer_wrapper = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This());
-  text_buffer_wrapper->cancel_queued_workers();
-  auto &text_buffer = text_buffer_wrapper->text_buffer;
+void TextBufferWrapper::set_text_in_range(const CallbackInfo &info) {
+  this->cancel_queued_workers();
+  auto &text_buffer = this->text_buffer;
   auto range = RangeWrapper::range_from_js(info[0]);
   auto text = string_conversion::string_from_js(info[1]);
   if (range && text) {
@@ -299,125 +319,118 @@ void TextBufferWrapper::set_text_in_range(const Nan::FunctionCallbackInfo<Value>
   }
 }
 
-void TextBufferWrapper::set_text(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto text_buffer_wrapper = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This());
-  text_buffer_wrapper->cancel_queued_workers();
-  auto &text_buffer = text_buffer_wrapper->text_buffer;
+void TextBufferWrapper::set_text(const CallbackInfo &info) {
+  this->cancel_queued_workers();
+  auto &text_buffer = this->text_buffer;
   auto text = string_conversion::string_from_js(info[0]);
   if (text) {
     text_buffer.set_text(move(*text));
   }
 }
 
-void TextBufferWrapper::line_for_row(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
-  auto maybe_row = Nan::To<uint32_t>(info[0]);
-
-  if (maybe_row.IsJust()) {
-    uint32_t row = maybe_row.FromJust();
+Napi::Value TextBufferWrapper::line_for_row(const CallbackInfo &info) {
+  auto &text_buffer = this->text_buffer;
+  Napi::Value result;
+  if (info.Length() > 0 && info[0].IsNumber()) {
+    uint32_t row = info[0].As<Number>().Uint32Value();
     if (row <= text_buffer.extent().row) {
-      text_buffer.with_line_for_row(row, [&info](const char16_t *data, uint32_t size) {
-        Local<String> result;
-        if (Nan::New<String>(reinterpret_cast<const uint16_t *>(data), size).ToLocal(&result)) {
-          info.GetReturnValue().Set(result);
-        }
+      text_buffer.with_line_for_row(row, [&info, &result](const char16_t *data, uint32_t size) {
+        auto env = info.Env();
+        result = String::New(env, data, size);
       });
     }
   }
-}
-
-void TextBufferWrapper::line_length_for_row(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
-  auto maybe_row = Nan::To<uint32_t>(info[0]);
-  if (maybe_row.IsJust()) {
-    auto result = text_buffer.line_length_for_row(maybe_row.FromJust());
-    if (result) {
-      info.GetReturnValue().Set(Nan::New<Number>(*result));
-    }
-  }
-}
-
-void TextBufferWrapper::line_ending_for_row(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
-  auto maybe_row = Nan::To<uint32_t>(info[0]);
-  if (maybe_row.IsJust()) {
-    auto result = text_buffer.line_ending_for_row(maybe_row.FromJust());
-    if (result) {
-      info.GetReturnValue().Set(Nan::New<String>(result).ToLocalChecked());
-    }
-  }
-}
-
-void TextBufferWrapper::get_lines(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
-  auto result = Nan::New<Array>();
-
-  for (uint32_t row = 0, row_count = text_buffer.extent().row + 1; row < row_count; row++) {
-    auto text = text_buffer.text_in_range({{row, 0}, {row, UINT32_MAX}});
-    Nan::Set(result, row, string_conversion::string_to_js(text));
-  }
-
-  info.GetReturnValue().Set(result);
-}
-
-void TextBufferWrapper::character_index_for_position(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
-  auto position = PointWrapper::point_from_js(info[0]);
-  if (position) {
-    info.GetReturnValue().Set(
-      Nan::New<Number>(text_buffer.clip_position(*position).offset)
-    );
-  }
-}
-
-void TextBufferWrapper::position_for_character_index(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
-  auto maybe_offset = Nan::To<int64_t>(info[0]);
-  if (maybe_offset.IsJust()) {
-    int64_t offset = maybe_offset.FromJust();
-    info.GetReturnValue().Set(
-      PointWrapper::from_point(text_buffer.position_for_offset(
-        std::max<int64_t>(0, offset)
-      ))
-    );
-  }
-}
-
-static Local<Value> encode_ranges(const vector<Range> &ranges) {
-  auto length = ranges.size() * 4;
-  auto buffer = v8::ArrayBuffer::New(v8::Isolate::GetCurrent(), length * sizeof(uint32_t));
-  auto result = v8::Uint32Array::New(buffer, 0, length);
-  #if (V8_MAJOR_VERSION < 8)
-    auto data = buffer->GetContents().Data();
-  #else
-    auto data = buffer->GetBackingStore()->Data();
-  #endif
-  memcpy(data, ranges.data(), length * sizeof(uint32_t));
   return result;
 }
 
+Napi::Value TextBufferWrapper::line_length_for_row(const CallbackInfo &info) {
+  auto env = info.Env();
+  auto &text_buffer = this->text_buffer;
+  if (info.Length() > 0 && info[0].IsNumber()) {
+    uint32_t row = info[0].As<Number>().Uint32Value();
+    auto result = text_buffer.line_length_for_row(row);
+    if (result) {
+      return Number::New(env, *result);
+    }
+  }
+  return env.Undefined();
+}
+
+Napi::Value TextBufferWrapper::line_ending_for_row(const CallbackInfo &info) {
+  auto env = info.Env();
+  auto &text_buffer = this->text_buffer;
+  if (info.Length() > 0 && info[0].IsNumber()) {
+    uint32_t row = info[0].As<Number>().Uint32Value();
+    auto result = text_buffer.line_ending_for_row(row);
+    if (result) {
+      return String::New(env, reinterpret_cast<const char16_t*>(result));
+    }
+  }
+  return env.Undefined();
+}
+
+Napi::Value TextBufferWrapper::get_lines(const CallbackInfo &info) {
+  auto env = info.Env();
+  auto &text_buffer = this->text_buffer;
+  auto result = Array::New(env);
+
+  for (uint32_t row = 0, row_count = text_buffer.extent().row + 1; row < row_count; row++) {
+    auto text = text_buffer.text_in_range({{row, 0}, {row, UINT32_MAX}});
+    result[row] = string_conversion::string_to_js(env, text);
+  }
+
+  return result;
+}
+
+Napi::Value TextBufferWrapper::character_index_for_position(const CallbackInfo &info) {
+  auto env = info.Env();
+  auto &text_buffer = this->text_buffer;
+  auto position = PointWrapper::point_from_js(info[0]);
+  if (position) {
+    return Number::New(env, text_buffer.clip_position(*position).offset);
+  }
+
+  return env.Undefined();
+}
+
+Napi::Value TextBufferWrapper::position_for_character_index(const CallbackInfo &info) {
+  auto env = info.Env();
+  auto &text_buffer = this->text_buffer;
+  if (info.Length() > 0 && info[0].IsNumber()) {
+    int64_t offset = info[0].As<Number>().Int64Value();
+    return PointWrapper::from_point(env, text_buffer.position_for_offset(
+        std::max<int64_t>(0, offset)
+      ));
+  }
+  return env.Undefined();
+}
+
+static Value encode_ranges(Env env, const vector<Range> &ranges) {
+  auto length = ranges.size() * 4;
+  Uint32Array js_array_buffer = Uint32Array::New(env, length);
+  memcpy(js_array_buffer.Data(), ranges.data(), length * sizeof(uint32_t));
+  return js_array_buffer;
+}
+
 template <bool single_result>
-class TextBufferSearcher : public Nan::AsyncWorker {
+class TextBufferSearcher : public Napi::AsyncWorker {
   const TextBuffer::Snapshot *snapshot;
   const Regex *regex;
   Range search_range;
   vector<Range> matches;
-  Nan::Persistent<Value> argument;
 
 public:
-  TextBufferSearcher(Nan::Callback *completion_callback,
+  TextBufferSearcher(Function &completion_callback,
                      const TextBuffer::Snapshot *snapshot,
                      const Regex *regex,
-                     const Range &search_range,
-                     Local<Value> arg) :
+                     const Range &search_range) :
     AsyncWorker(completion_callback, "TextBuffer.find"),
     snapshot{snapshot},
     regex{regex},
     search_range(search_range) {
-    argument.Reset(arg);
   }
 
-  void Execute() {
+  void Execute() override {
     if (single_result) {
       auto find_result = snapshot->find(*regex, search_range);
       if (find_result) {
@@ -428,21 +441,23 @@ public:
     }
   }
 
-  void HandleOKCallback() {
+  void OnOK() override{
+    auto env = Env();
     delete snapshot;
-    Local<Value> argv[] = {Nan::Null(), encode_ranges(matches)};
-    callback->Call(2, argv, async_resource);
+    snapshot = nullptr;
+    Callback().Call({env.Null(), encode_ranges(env, matches)});
   }
 };
 
-void TextBufferWrapper::find_sync(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
+Napi::Value TextBufferWrapper::find_sync(const CallbackInfo &info) {
+  auto env = info.Env();
+  auto &text_buffer = this->text_buffer;
   const Regex *regex = RegexWrapper::regex_from_js(info[0]);
   if (regex) {
     optional<Range> search_range;
-    if (info[1]->IsObject()) {
+    if (info[1].IsObject()) {
       search_range = RangeWrapper::range_from_js(info[1]);
-      if (!search_range) return;
+      if (!search_range) return env.Null();
     }
 
     auto match = text_buffer.find(
@@ -452,18 +467,21 @@ void TextBufferWrapper::find_sync(const Nan::FunctionCallbackInfo<Value> &info) 
     vector<Range> matches;
     if (match) matches.push_back(*match);
 
-    info.GetReturnValue().Set(encode_ranges(matches));
+    return encode_ranges(env, matches);
   }
+
+  return env.Undefined();
 }
 
-void TextBufferWrapper::find_all_sync(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
+Napi::Value TextBufferWrapper::find_all_sync(const CallbackInfo &info) {
+  auto env = info.Env();
+  auto &text_buffer = this->text_buffer;
   const Regex *regex = RegexWrapper::regex_from_js(info[0]);
   if (regex) {
     optional<Range> search_range;
-    if (info[1]->IsObject()) {
+    if (info[1].IsObject()) {
       search_range = RangeWrapper::range_from_js(info[1]);
-      if (!search_range) return;
+      if (!search_range) return env.Null();
     }
 
     vector<Range> matches = text_buffer.find_all(
@@ -471,93 +489,106 @@ void TextBufferWrapper::find_all_sync(const Nan::FunctionCallbackInfo<Value> &in
       search_range ? *search_range : Range::all_inclusive()
     );
 
-    info.GetReturnValue().Set(encode_ranges(matches));
+    return encode_ranges(env, matches);
   }
+
+  return env.Undefined();
 }
 
-void TextBufferWrapper::find_and_mark_all_sync(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
+Napi::Value TextBufferWrapper::find_and_mark_all_sync(const CallbackInfo &info) {
+  auto env = info.Env();
+  auto &text_buffer = this->text_buffer;
   MarkerIndex *marker_index = MarkerIndexWrapper::from_js(info[0]);
-  if (!marker_index) return;
-  auto next_id = Nan::To<unsigned>(info[1]);
-  if (!next_id.IsJust()) return;
-  if (!info[2]->IsBoolean()) return;
-  bool exclusive = Nan::To<bool>(info[2]).FromMaybe(false);
+  if (!marker_index) return env.Undefined();
 
+  if (!info[1].IsNumber()) {
+    return env.Undefined();
+  }
+  auto next_id = info[1].As<Number>().Uint32Value();
+
+  if (!info[2].IsBoolean()) {
+    return env.Undefined();
+  }
+  bool exclusive = info[2].As<Boolean>().Value();
+
+  if (info.Length() < 4) return env.Undefined();
   const Regex *regex = RegexWrapper::regex_from_js(info[3]);
   if (regex) {
     optional<Range> search_range;
-    if (info[4]->IsObject()) {
+    if (info.Length() > 4 && info[4].IsObject()) {
       search_range = RangeWrapper::range_from_js(info[4]);
-      if (!search_range) return;
+      if (!search_range) return env.Undefined();
     }
 
     unsigned count = text_buffer.find_and_mark_all(
       *marker_index,
-      next_id.FromJust(),
+      next_id,
       exclusive,
       *regex,
       search_range ? *search_range : Range::all_inclusive()
     );
 
-    info.GetReturnValue().Set(Nan::New<Number>(count));
+    return Number::New(env, count);
   }
+
+  return env.Undefined();
 }
 
-void TextBufferWrapper::find(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
-  auto callback = new Nan::Callback(info[1].As<Function>());
+void TextBufferWrapper::find(const CallbackInfo &info) {
+  auto &text_buffer = this->text_buffer;
+  auto callback = info[1].As<Function>();
   const Regex *regex = RegexWrapper::regex_from_js(info[0]);
   if (regex) {
     optional<Range> search_range;
-    if (info[2]->IsObject()) {
+    if (info[2].IsObject()) {
       search_range = RangeWrapper::range_from_js(info[2]);
       if (!search_range) return;
     }
-    Nan::AsyncQueueWorker(new TextBufferSearcher<true>(
+
+    auto async_worker = new TextBufferSearcher<true>(
       callback,
       text_buffer.create_snapshot(),
       regex,
-      search_range ? *search_range : Range::all_inclusive(),
-      info[0]
-    ));
+      search_range ? *search_range : Range::all_inclusive()
+    );
+    async_worker->Queue();
   }
 }
 
-void TextBufferWrapper::find_all(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
-  auto callback = new Nan::Callback(info[1].As<Function>());
+void TextBufferWrapper::find_all(const CallbackInfo &info) {
+  auto &text_buffer = this->text_buffer;
+  auto callback = info[1].As<Function>();
   const Regex *regex = RegexWrapper::regex_from_js(info[0]);
   if (regex) {
     optional<Range> search_range;
-    if (info[2]->IsObject()) {
+    if (info[2].IsObject()) {
       search_range = RangeWrapper::range_from_js(info[2]);
       if (!search_range) return;
     }
-    Nan::AsyncQueueWorker(new TextBufferSearcher<false>(
+    auto async_worker = new TextBufferSearcher<false>(
       callback,
       text_buffer.create_snapshot(),
       regex,
-      search_range ? *search_range : Range::all_inclusive(),
-      info[0]
-    ));
+      search_range ? *search_range : Range::all_inclusive()
+    );
+    async_worker->Queue();
   }
 }
 
-void TextBufferWrapper::find_words_with_subsequence_in_range(const Nan::FunctionCallbackInfo<v8::Value> &info) {
-  class FindWordsWithSubsequenceInRangeWorker : public Nan::AsyncWorker, public CancellableWorker {
-    Nan::Persistent<Object> buffer;
+void TextBufferWrapper::find_words_with_subsequence_in_range(const CallbackInfo &info) {
+  class FindWordsWithSubsequenceInRangeWorker : public Napi::AsyncWorker {
+    Napi::ObjectReference buffer;
     const TextBuffer::Snapshot *snapshot;
     const u16string query;
     const u16string extra_word_characters;
     const size_t max_count;
     const Range range;
     vector<TextBuffer::SubsequenceMatch> result;
-    uv_rwlock_t snapshot_lock;
+    TextBufferWrapper *text_buffer_wrapper;
 
   public:
-    FindWordsWithSubsequenceInRangeWorker(Local<Object> buffer,
-                                   Nan::Callback *completion_callback,
+    FindWordsWithSubsequenceInRangeWorker(Object buffer,
+                                   Function &completion_callback,
                                    const u16string query,
                                    const u16string extra_word_characters,
                                    const size_t max_count,
@@ -567,59 +598,57 @@ void TextBufferWrapper::find_words_with_subsequence_in_range(const Nan::Function
       extra_word_characters{extra_word_characters},
       max_count{max_count},
       range(range) {
-      uv_rwlock_init(&snapshot_lock);
-      this->buffer.Reset(buffer);
-      auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(buffer)->text_buffer;
-      snapshot = text_buffer.create_snapshot();
+      this->buffer.Reset(buffer, 1);
+      text_buffer_wrapper = TextBufferWrapper::Unwrap(buffer);
+      snapshot = text_buffer_wrapper->text_buffer.create_snapshot();
     }
 
     ~FindWordsWithSubsequenceInRangeWorker() {
-      uv_rwlock_destroy(&snapshot_lock);
+      if (snapshot) {
+        delete snapshot;
+        snapshot = nullptr;
+      }
     }
 
-    void Execute() {
-      uv_rwlock_rdlock(&snapshot_lock);
+    void OnWorkComplete(Napi::Env env, napi_status status) override {
+      if (status == napi_cancelled) {
+        Callback().Call({env.Null()});
+      }
+
+      AsyncWorker::OnWorkComplete(env, status);
+    }
+
+    void Execute() override {
+      {
+        std::lock_guard<std::mutex> guard(text_buffer_wrapper->outstanding_workers_mutex);
+        text_buffer_wrapper->outstanding_workers.erase(this);
+      }
+
       if (!snapshot) {
-        uv_rwlock_rdunlock(&snapshot_lock);
         return;
       }
       result = snapshot->find_words_with_subsequence_in_range(query, extra_word_characters, range);
-      uv_rwlock_rdunlock(&snapshot_lock);
     }
 
-    void CancelIfQueued() {
-      int lock_status = uv_rwlock_trywrlock(&snapshot_lock);
-      if (lock_status == 0) {
-        delete snapshot;
-        snapshot = nullptr;
-        uv_rwlock_wrunlock(&snapshot_lock);
-      }
-    }
-
-    void HandleOKCallback() {
+    void OnOK() override {
+      auto env = Env();
       if (!snapshot) {
-        Local<Value> argv[] = {Nan::Null()};
-        callback->Call(1, argv, async_resource);
+        Callback().Call({env.Null()});
         return;
       }
 
       delete snapshot;
-      auto text_buffer_wrapper = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(Nan::New(buffer));
-      text_buffer_wrapper->outstanding_workers.erase(this);
+      snapshot = nullptr;
 
-      Local<Array> js_matches_array = Nan::New<Array>();
+      Array js_matches_array = Array::New(env);
 
       uint32_t positions_buffer_size = 0;
       for (const auto &subsequence_match : result) {
         positions_buffer_size += sizeof(uint32_t) + subsequence_match.positions.size() * sizeof(Point);
       }
 
-      auto positions_buffer = v8::ArrayBuffer::New(v8::Isolate::GetCurrent(), positions_buffer_size);
-      #if (V8_MAJOR_VERSION < 8)
-        uint32_t *positions_data = reinterpret_cast<uint32_t *>(positions_buffer->GetContents().Data());
-      #else
-        uint32_t *positions_data = reinterpret_cast<uint32_t *>(positions_buffer->GetBackingStore()->Data());
-      #endif
+      auto positions_buffer = ArrayBuffer::New(env, positions_buffer_size);
+      uint32_t *positions_data = reinterpret_cast<uint32_t *>(positions_buffer.Data());
 
       uint32_t positions_array_index = 0;
       for (size_t i = 0; i < result.size() && i < max_count; i++) {
@@ -632,25 +661,22 @@ void TextBufferWrapper::find_words_with_subsequence_in_range(const Nan::Function
           bytes_to_copy
         );
         positions_array_index += bytes_to_copy / sizeof(uint32_t);
-        Nan::Set(js_matches_array, i, SubsequenceMatchWrapper::from_subsequence_match(match));
+        js_matches_array[i] = SubsequenceMatchWrapper::from_subsequence_match(env, match);
       }
 
-      auto positions_array = v8::Uint32Array::New(positions_buffer, 0, positions_buffer_size / sizeof(uint32_t));
-      Local<Value> argv[] = {js_matches_array, positions_array};
-      callback->Call(2, argv, async_resource);
+      auto positions_array = Uint32Array::New(env, positions_buffer_size / sizeof(uint32_t), positions_buffer, 0);
+      Callback().Call({js_matches_array, positions_array});
     }
   };
-
 
   auto query = string_conversion::string_from_js(info[0]);
   auto extra_word_characters = string_conversion::string_from_js(info[1]);
   auto max_count = number_conversion::number_from_js<uint32_t>(info[2]);
   auto range = RangeWrapper::range_from_js(info[3]);
-  auto callback = new Nan::Callback(info[4].As<Function>());
+  Function callback = info[4].As<Function>();
 
   if (query && extra_word_characters && max_count && range && callback) {
-    auto js_buffer = info.This();
-    auto text_buffer_wrapper = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(js_buffer);
+    Napi::Object js_buffer = info.This().As<Object>();
 
     auto worker = new FindWordsWithSubsequenceInRangeWorker(
       js_buffer,
@@ -661,32 +687,37 @@ void TextBufferWrapper::find_words_with_subsequence_in_range(const Nan::Function
       *range
     );
 
-    text_buffer_wrapper->outstanding_workers.insert(worker);
-    Nan::AsyncQueueWorker(worker);
+    {
+      std::lock_guard<std::mutex> guard(outstanding_workers_mutex);
+      this->outstanding_workers.insert(worker);
+    }
+    worker->Queue();
   } else {
-    Nan::ThrowError("Invalid arguments");
+    Napi::Error::New(Env(), "Invalid arguments").ThrowAsJavaScriptException();
   }
 }
 
-void TextBufferWrapper::is_modified(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
-  info.GetReturnValue().Set(Nan::New<Boolean>(text_buffer.is_modified()));
+Napi::Value TextBufferWrapper::is_modified(const CallbackInfo &info) {
+  auto &text_buffer = this->text_buffer;
+  return Boolean::New(info.Env(), text_buffer.is_modified());
 }
 
 static const int INVALID_ENCODING = -1;
 
-struct Error {
-  int number;
-  const char *syscall;
-};
+namespace textbuffer {
+  struct Error {
+    int number;
+    const char *syscall;
+  };
 
-static Local<Value> error_to_js(Error error, string encoding_name, string file_name) {
-  if (error.number == INVALID_ENCODING) {
-    return Nan::Error(("Invalid encoding name: " + encoding_name).c_str());
-  } else {
-    return node::ErrnoException(
-      v8::Isolate::GetCurrent(), error.number, error.syscall, error.syscall, file_name.c_str()
-    );
+  static Napi::Value error_to_js(Env env, Error error, string encoding_name, string file_name) {
+    if (error.number == INVALID_ENCODING) {
+      return Napi::Error::New(env, ("Invalid encoding name: " + encoding_name).c_str()).Value();
+    } else {
+      return Napi::Value(env, JsValueFromV8LocalValue(node::ErrnoException(
+        v8::Isolate::GetCurrent(), error.number, error.syscall, error.syscall, file_name.c_str()
+      )));
+    }
   }
 }
 
@@ -694,24 +725,24 @@ template <typename Callback>
 static u16string load_file(
   const string &file_name,
   const string &encoding_name,
-  optional<Error> *error,
+  optional<textbuffer::Error> *error,
   const Callback &callback
 ) {
   auto conversion = transcoding_from(encoding_name.c_str());
   if (!conversion) {
-    *error = Error{INVALID_ENCODING, nullptr};
+    *error = textbuffer::Error{INVALID_ENCODING, nullptr};
     return u"";
   }
 
   FILE *file = open_file(file_name, "rb");
   if (!file) {
-    *error = Error{errno, "open"};
+    *error = textbuffer::Error{errno, "open"};
     return u"";
   }
 
   size_t file_size = get_file_size(file);
   if (file_size == static_cast<size_t>(-1)) {
-    *error = Error{errno, "stat"};
+    *error = textbuffer::Error{errno, "stat"};
     return u"";
   }
 
@@ -727,7 +758,7 @@ static u16string load_file(
       callback(percent_done);
     }
   )) {
-    *error = Error{errno, "read"};
+    *error = textbuffer::Error{errno, "read"};
   }
 
   fclose(file);
@@ -735,14 +766,13 @@ static u16string load_file(
 }
 
 class Loader {
-  Nan::Callback *progress_callback;
-  Nan::AsyncResource *async_resource;
+  FunctionReference progress_callback;
   TextBuffer *buffer;
   TextBuffer::Snapshot *snapshot;
   string file_name;
   string encoding_name;
   optional<Text> loaded_text;
-  optional<Error> error;
+  optional<textbuffer::Error> error;
   Patch patch;
   bool force;
   bool compute_patch;
@@ -750,53 +780,53 @@ class Loader {
  public:
   bool cancelled;
 
-  Loader(Nan::Callback *progress_callback, Nan::AsyncResource *async_resource,
+  Loader(FunctionReference progress_callback,
          TextBuffer *buffer, TextBuffer::Snapshot *snapshot, string &&file_name,
          string &&encoding_name, bool force, bool compute_patch) :
-    progress_callback{progress_callback},
-    async_resource{async_resource},
+    progress_callback{move(progress_callback)},
     buffer{buffer},
     snapshot{snapshot},
     file_name{move(file_name)},
     encoding_name{move(encoding_name)},
     force{force},
     compute_patch{compute_patch},
-    cancelled{false} {}
+    cancelled{false} {
+    }
 
-  Loader(Nan::Callback *progress_callback, Nan::AsyncResource *async_resource,
+  Loader(FunctionReference progress_callback,
          TextBuffer *buffer, TextBuffer::Snapshot *snapshot, Text &&text,
          bool force, bool compute_patch) :
-    progress_callback{progress_callback},
+    progress_callback{move(progress_callback)},
     buffer{buffer},
     snapshot{snapshot},
     loaded_text{move(text)},
     force{force},
     compute_patch{compute_patch},
-    cancelled{false} {}
+    cancelled{false} {
+    }
 
-  ~Loader() {
-    if (progress_callback) delete progress_callback;
-  }
-
-  template <typename Callback>
-  void Execute(const Callback &callback) {
+  template <typename Function>
+  void Execute(const Function &callback) {
     if (!loaded_text) loaded_text = Text{load_file(file_name, encoding_name, &error, callback)};
     if (!error && compute_patch) patch = text_diff(snapshot->base_text(), *loaded_text);
   }
 
-  pair<Local<Value>, Local<Value>> Finish(Nan::AsyncResource* caller_async_resource = nullptr) {
+  pair<Value, Value> Finish(Napi::Env env) {
     if (error) {
       delete snapshot;
-      return {error_to_js(*error, encoding_name, file_name), Nan::Undefined()};
+      snapshot = nullptr;
+      return {textbuffer::error_to_js(env, *error, encoding_name, file_name), env.Undefined()};
     }
 
     if (cancelled || (!force && buffer->is_modified())) {
       delete snapshot;
-      return {Nan::Null(), Nan::Null()};
+      snapshot = nullptr;
+      return {env.Null(), env.Null()};
     }
 
     Patch inverted_changes = buffer->get_inverted_changes(snapshot);
     delete snapshot;
+    snapshot = nullptr;
 
     if (compute_patch && inverted_changes.get_change_count() > 0) {
       inverted_changes.combine(patch);
@@ -804,26 +834,19 @@ class Loader {
     }
 
     bool has_changed;
-    Local<Value> patch_wrapper;
+    Value patch_wrapper;
     if (compute_patch) {
       has_changed = !compute_patch || patch.get_change_count() > 0;
-      patch_wrapper = PatchWrapper::from_patch(move(patch));
+      patch_wrapper = PatchWrapper::from_patch(env, move(patch));
     } else {
       has_changed = true;
-      patch_wrapper = Nan::Null();
+      patch_wrapper = env.Null();
     }
 
-    if (progress_callback) {
-      Local<Value> argv[] = {Nan::New<Number>(100), patch_wrapper};
-      MaybeLocal<v8::Value> progress_result;
-      Nan::AsyncResource* resource = caller_async_resource ? caller_async_resource : async_resource;
-      if (resource) {
-        progress_result = progress_callback->Call(2, argv, resource);
-      } else {
-        progress_result = Nan::Call(*progress_callback, 2, argv);
-      }
-      if (!progress_result.IsEmpty() && progress_result.ToLocalChecked()->IsFalse()) {
-        return {Nan::Null(), Nan::Null()};
+    if (!progress_callback.IsEmpty()) {
+      Napi::Value progress_result = progress_callback.Call({Number::New(env, 100), patch_wrapper});
+      if (!progress_result.IsEmpty() && progress_result.IsBoolean() && !progress_result.As<Boolean>().Value()) {
+        return {env.Null(), env.Null()};
       }
     }
 
@@ -833,84 +856,81 @@ class Loader {
       buffer->flush_changes();
     }
 
-    return {Nan::Null(), patch_wrapper};
+    return {env.Null(), patch_wrapper};
   }
 
   void CallProgressCallback(size_t percent_done) {
-    if (!cancelled && progress_callback) {
-      Nan::HandleScope scope;
-      Local<Value> argv[] = {Nan::New<Number>(static_cast<uint32_t>(percent_done))};
-      MaybeLocal<v8::Value> progress_result;
-      if (async_resource) {
-        progress_result = progress_callback->Call(1, argv, async_resource);
-      } else {
-        progress_result = Nan::Call(*progress_callback, 1, argv);
-      }
-
-      if (!progress_result.IsEmpty() && progress_result.ToLocalChecked()->IsFalse()) cancelled = true;
+    if (!cancelled && !progress_callback.IsEmpty()) {
+      auto env = progress_callback.Env();
+      Napi::Value progress_result = progress_callback.Call({Number::New(env, static_cast<uint32_t>(percent_done))});
+      if (!progress_result.IsEmpty() && progress_result.IsBoolean() && !progress_result.As<Boolean>().Value()) cancelled = true;
     }
   }
 };
 
-class LoadWorker : public Nan::AsyncProgressWorkerBase<size_t> {
+class LoadWorker : public AsyncProgressWorker<uint32_t> {
   Loader loader;
 
  public:
-  LoadWorker(Nan::Callback *completion_callback, Nan::Callback *progress_callback,
+  LoadWorker(Function &completion_callback, FunctionReference progress_callback,
              TextBuffer *buffer, TextBuffer::Snapshot *snapshot, string &&file_name,
              string &&encoding_name, bool force, bool compute_patch) :
-    AsyncProgressWorkerBase(completion_callback, "TextBuffer.load"),
-    loader(progress_callback, async_resource, buffer, snapshot, move(file_name), move(encoding_name), force, compute_patch) {}
+    AsyncProgressWorker(completion_callback, "TextBuffer.load"),
+    loader(move(progress_callback), buffer, snapshot, move(file_name), move(encoding_name), force, compute_patch) {}
 
-  LoadWorker(Nan::Callback *completion_callback, Nan::Callback *progress_callback,
+  LoadWorker(Function &completion_callback, FunctionReference progress_callback,
              TextBuffer *buffer, TextBuffer::Snapshot *snapshot, Text &&text,
              bool force, bool compute_patch) :
-    AsyncProgressWorkerBase(completion_callback, "TextBuffer.load"),
-    loader(progress_callback, async_resource, buffer, snapshot, move(text), force, compute_patch) {}
+    AsyncProgressWorker(completion_callback, "TextBuffer.load"),
+    loader(move(progress_callback), buffer, snapshot, move(text), force, compute_patch) {}
 
-  void Execute(const Nan::AsyncProgressWorkerBase<size_t>::ExecutionProgress &progress) {
-    loader.Execute([&progress](size_t percent_done) {
+  void Execute(const ExecutionProgress &progress) override {
+    loader.Execute([&progress](uint32_t percent_done) {
       progress.Send(&percent_done, 1);
     });
   }
 
-  void HandleProgressCallback(const size_t *percent_done, size_t count) {
-    if (percent_done) loader.CallProgressCallback(*percent_done);
+  void OnProgress(const uint32_t *percent_done, size_t count) override {
+    if (percent_done) {
+      loader.CallProgressCallback(*percent_done);
+    }
   }
 
-  void HandleOKCallback() {
-    auto results = loader.Finish(async_resource);
-    Local<Value> argv[] = {results.first, results.second};
-    callback->Call(2, argv, async_resource);
+  void OnOK() override {
+    auto results = loader.Finish(Env());
+    Callback().Call({results.first, results.second});
   }
 };
 
-void TextBufferWrapper::load_sync(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
+Napi::Value TextBufferWrapper::load_sync(const CallbackInfo &info) {
+  auto env = info.Env();
+  auto &text_buffer = this->text_buffer;
 
   if (text_buffer.is_modified()) {
-    info.GetReturnValue().Set(Nan::Null());
-    return;
+    return env.Undefined();
   }
 
-  Local<String> js_file_path;
-  if (!Nan::To<String>(info[0]).ToLocal(&js_file_path)) return;
-  string file_path = *Nan::Utf8String(js_file_path);
-
-  Local<String> js_encoding_name;
-  if (!Nan::To<String>(info[1]).ToLocal(&js_encoding_name)) return;
-  string encoding_name = *Nan::Utf8String(js_encoding_name);
-
-  Nan::Callback *progress_callback = nullptr;
-  if (info[2]->IsFunction()) {
-    progress_callback = new Nan::Callback(info[2].As<Function>());
+  if (!info[0].IsString()) {
+    return env.Undefined();
   }
 
-  Nan::HandleScope scope;
+  String js_file_path = info[0].As<String>();
+  string file_path =js_file_path.Utf8Value();
+
+  if (!info[1].IsString()) {
+    return env.Undefined();
+  }
+
+  String js_encoding_name = info[1].As<String>();
+  string encoding_name = js_encoding_name.Utf8Value();
+
+  FunctionReference progress_callback;
+  if (info[2].IsFunction()) {
+    progress_callback = Persistent(info[2].As<Function>());
+  }
 
   Loader worker(
-    progress_callback,
-    nullptr,
+    move(progress_callback),
     &text_buffer,
     text_buffer.create_snapshot(),
     move(file_path),
@@ -923,54 +943,50 @@ void TextBufferWrapper::load_sync(const Nan::FunctionCallbackInfo<Value> &info) 
     worker.CallProgressCallback(percent_done);
   });
 
-  auto results = worker.Finish();
-  if (results.first->IsNull()) {
-    info.GetReturnValue().Set(results.second);
+  auto results = worker.Finish(env);
+  if (results.first.IsNull()) {
+    return results.second;
   } else {
-    Nan::ThrowError(results.first);
+    results.first.As<Error>().ThrowAsJavaScriptException();
   }
+  return env.Undefined();
 }
 
-void TextBufferWrapper::load(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
+void TextBufferWrapper::load(const CallbackInfo &info) {
+  auto env = info.Env();
+  auto &text_buffer = this->text_buffer;
 
   bool force = false;
-  if (info[2]->IsTrue()) force = true;
+  if (info[2].IsBoolean() && info[2].As<Boolean>()) force = true;
 
   bool compute_patch = true;
-  if (info[3]->IsFalse()) compute_patch = false;
+  if (info[3].IsBoolean() && !info[3].As<Boolean>()) compute_patch = false;
 
   if (!force && text_buffer.is_modified()) {
-    Local<Value> argv[] = {Nan::Null(), Nan::Null()};
     auto callback = info[0].As<Function>();
-    #if (V8_MAJOR_VERSION > 9 || (V8_MAJOR_VERSION == 9 && V8_MINOR_VERION > 4))
-      Nan::Call(callback, callback->GetCreationContext().ToLocalChecked()->Global(), 2, argv);
-    #else
-      Nan::Call(callback, callback->CreationContext()->Global(), 2, argv);
-    #endif
+    callback.Call({env.Null(), env.Null()});
     return;
   }
 
-  Nan::Callback *completion_callback = new Nan::Callback(info[0].As<Function>());
+  Function completion_callback = info[0].As<Function>();
 
-  Nan::Callback *progress_callback = nullptr;
-  if (info[1]->IsFunction()) {
-    progress_callback = new Nan::Callback(info[1].As<Function>());
+  FunctionReference progress_callback;
+  if (info[1].IsFunction()) {
+    progress_callback = Persistent(info[1].As<Function>());
   }
 
   LoadWorker *worker;
-  if (info[4]->IsString()) {
-    Local<String> js_file_path;
-    if (!Nan::To<String>(info[4]).ToLocal(&js_file_path)) return;
-    string file_path = *Nan::Utf8String(js_file_path);
+  if (info[4].IsString()) {
+    String js_file_path =info[4].As<String>();
+    string file_path = js_file_path.Utf8Value();
 
-    Local<String> js_encoding_name;
-    if (!Nan::To<String>(info[5]).ToLocal(&js_encoding_name)) return;
-    string encoding_name = *Nan::Utf8String(info[5].As<String>());
+    if (!info[5].IsString()) return;
+    String js_encoding_name = info[5].As<String>();
+    string encoding_name = js_encoding_name.Utf8Value();
 
     worker = new LoadWorker(
       completion_callback,
-      progress_callback,
+      move(progress_callback),
       &text_buffer,
       text_buffer.create_snapshot(),
       move(file_path),
@@ -979,10 +995,10 @@ void TextBufferWrapper::load(const Nan::FunctionCallbackInfo<Value> &info) {
       compute_patch
     );
   } else {
-    auto text_writer = Nan::ObjectWrap::Unwrap<TextWriter>(Nan::To<Object>(info[4]).ToLocalChecked());
+    auto text_writer = TextWriter::Unwrap(info[4].As<Object>());
     worker = new LoadWorker(
       completion_callback,
-      progress_callback,
+      move(progress_callback),
       &text_buffer,
       text_buffer.create_snapshot(),
       text_writer->get_text(),
@@ -991,18 +1007,18 @@ void TextBufferWrapper::load(const Nan::FunctionCallbackInfo<Value> &info) {
     );
   }
 
-  Nan::AsyncQueueWorker(worker);
+  worker->Queue();
 }
 
-class BaseTextComparisonWorker : public Nan::AsyncWorker {
+class BaseTextComparisonWorker : public AsyncWorker {
   TextBuffer::Snapshot *snapshot;
   string file_name;
   string encoding_name;
-  optional<Error> error;
+  optional<textbuffer::Error> error;
   bool result;
 
  public:
-  BaseTextComparisonWorker(Nan::Callback *completion_callback, TextBuffer::Snapshot *snapshot,
+  BaseTextComparisonWorker(Function &completion_callback, TextBuffer::Snapshot *snapshot,
                        string &&file_name, string &&encoding_name) :
     AsyncWorker(completion_callback, "TextBuffer.baseTextMatchesFile"),
     snapshot{snapshot},
@@ -1010,80 +1026,74 @@ class BaseTextComparisonWorker : public Nan::AsyncWorker {
     encoding_name{move(encoding_name)},
     result{false} {}
 
-  void Execute() {
+  void Execute() override {
     u16string file_contents = load_file(file_name, encoding_name, &error, [](size_t progress) {});
     result = std::equal(file_contents.begin(), file_contents.end(), snapshot->base_text().begin());
   }
 
-  void HandleOKCallback() {
+  void OnOK() override {
+    auto env = Env();
     delete snapshot;
+    snapshot = nullptr;
     if (error) {
-      Local<Value> argv[] = {error_to_js(*error, encoding_name, file_name)};
-      callback->Call(1, argv, async_resource);
+      Callback().Call({error_to_js(env, *error, encoding_name, file_name)});
     } else {
-      Local<Value> argv[] = {Nan::Null(), Nan::New<Boolean>(result)};
-      callback->Call(2, argv, async_resource);
+      Callback().Call({env.Null(), Boolean::New(env, result)});
     }
   }
 };
 
-void TextBufferWrapper::base_text_matches_file(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
+void TextBufferWrapper::base_text_matches_file(const CallbackInfo &info) {
+  auto env = info.Env();
+  auto &text_buffer = this->text_buffer;
 
-  if (info[1]->IsString()) {
-    Nan::Callback *completion_callback = new Nan::Callback(info[0].As<Function>());
-    Local<String> js_file_path;
-    if (!Nan::To<String>(info[1]).ToLocal(&js_file_path)) return;
-    string file_path = *Nan::Utf8String(js_file_path);
+  if (info[1].IsString()) {
+    Function completion_callback = info[0].As<Function>();
+    String js_file_path = info[1].As<String>();
+    string file_path = js_file_path.Utf8Value();
 
-    Local<String> js_encoding_name;
-    if (!Nan::To<String>(info[2]).ToLocal(&js_encoding_name)) return;
-    string encoding_name = *Nan::Utf8String(info[2].As<String>());
+    if (!info[2].IsString()) return;
+    String js_encoding_name = info[2].As<String>();
+    string encoding_name = js_encoding_name.Utf8Value();
 
-    Nan::AsyncQueueWorker(new BaseTextComparisonWorker(
+    (new BaseTextComparisonWorker(
       completion_callback,
       text_buffer.create_snapshot(),
       move(file_path),
       move(encoding_name)
-    ));
+    ))->Queue();
   } else {
-    auto file_contents = Nan::ObjectWrap::Unwrap<TextWriter>(Nan::To<Object>(info[1]).ToLocalChecked())->get_text();
+    auto file_contents = TextWriter::Unwrap(info[1].As<Object>())->get_text();
     bool result = std::equal(file_contents.begin(), file_contents.end(), text_buffer.base_text().begin());
-    Local<Value> argv[] = {Nan::Null(), Nan::New<Boolean>(result)};
     auto callback = info[0].As<Function>();
-
-    #if (V8_MAJOR_VERSION > 9 || (V8_MAJOR_VERSION == 9 && V8_MINOR_VERION > 4))
-      Nan::Call(callback, callback->GetCreationContext().ToLocalChecked()->Global(), 2, argv);
-    #else
-      Nan::Call(callback, callback->CreationContext()->Global(), 2, argv);
-    #endif
+    callback.Call({env.Null(), Boolean::New(env, result)});
   }
 }
 
-class SaveWorker : public Nan::AsyncWorker {
+class SaveWorker : public AsyncWorker {
   TextBuffer::Snapshot *snapshot;
   string file_name;
   string encoding_name;
-  optional<Error> error;
+  optional<textbuffer::Error> error;
 
  public:
-  SaveWorker(Nan::Callback *completion_callback, TextBuffer::Snapshot *snapshot,
+  SaveWorker(Function &completion_callback, TextBuffer::Snapshot *snapshot,
              string &&file_name, string &&encoding_name) :
     AsyncWorker(completion_callback, "TextBuffer.save"),
     snapshot{snapshot},
     file_name{file_name},
     encoding_name(encoding_name) {}
 
-  void Execute() {
+  void Execute() override {
     auto conversion = transcoding_to(encoding_name.c_str());
     if (!conversion) {
-      error = Error{INVALID_ENCODING, nullptr};
+      error = textbuffer::Error{INVALID_ENCODING, nullptr};
       return;
     }
 
     FILE *file = open_file(file_name, "wb+");
     if (!file) {
-      error = Error{errno, "open"};
+      error = textbuffer::Error{errno, "open"};
       return;
     }
 
@@ -1096,7 +1106,7 @@ class SaveWorker : public Nan::AsyncWorker {
         file,
         output_buffer
       )) {
-        error = Error{errno, "write"};
+        error = textbuffer::Error{errno, "write"};
         fclose(file);
         return;
       }
@@ -1105,104 +1115,112 @@ class SaveWorker : public Nan::AsyncWorker {
     fclose(file);
   }
 
-  Local<Value> Finish() {
+  Value Finish() {
+    auto env = Env();
     if (error) {
       delete snapshot;
-      return error_to_js(*error, encoding_name, file_name);
+      snapshot = nullptr;
+      return error_to_js(env, *error, encoding_name, file_name);
     } else {
       snapshot->flush_preceding_changes();
       delete snapshot;
-      return Nan::Null();
+      snapshot = nullptr;
+      return env.Null();
     }
   }
 
-  void HandleOKCallback() {
-    Local<Value> argv[] = {Finish()};
-    callback->Call(1, argv, async_resource);
+  void OnOK() override {
+    Callback().Call({Finish()});
   }
 };
 
-void TextBufferWrapper::save(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
+void TextBufferWrapper::save(const CallbackInfo &info) {
+  auto &text_buffer = this->text_buffer;
 
-  Local<String> js_file_path;
-  if (!Nan::To<String>(info[0]).ToLocal(&js_file_path)) return;
-  string file_path = *Nan::Utf8String(js_file_path);
+  if (!info[0].IsString()) return;
+  String js_file_path = info[0].As<String>();
+  string file_path = js_file_path.Utf8Value();
 
-  Local<String> js_encoding_name;
-  if (!Nan::To<String>(info[1]).ToLocal(&js_encoding_name)) return;
-  string encoding_name = *Nan::Utf8String(info[1].As<String>());
+  if (!info[1].IsString()) return;
+  String js_encoding_name = info[1].As<String>();
+  string encoding_name = js_encoding_name.Utf8Value();
 
-  Nan::Callback *completion_callback = new Nan::Callback(info[2].As<Function>());
-  Nan::AsyncQueueWorker(new SaveWorker(
+  Function completion_callback = info[2].As<Function>();
+  (new SaveWorker(
     completion_callback,
     text_buffer.create_snapshot(),
     move(file_path),
     move(encoding_name)
-  ));
+  ))->Queue();
 }
 
-void TextBufferWrapper::serialize_changes(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
+Napi::Value TextBufferWrapper::serialize_changes(const CallbackInfo &info) {
+  auto env = info.Env();
+  auto &text_buffer = this->text_buffer;
 
   static vector<uint8_t> output;
   output.clear();
   Serializer serializer(output);
   text_buffer.serialize_changes(serializer);
-  Local<Object> result;
-  if (Nan::CopyBuffer(reinterpret_cast<char *>(output.data()), output.size()).ToLocal(&result)) {
-    info.GetReturnValue().Set(result);
-  }
+  auto result = Buffer<char>::Copy(env, reinterpret_cast<char *>(output.data()), output.size());
+  return result;
 }
 
-void TextBufferWrapper::deserialize_changes(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
-  if (info[0]->IsUint8Array()) {
-    auto *data = node::Buffer::Data(info[0]);
+void TextBufferWrapper::deserialize_changes(const CallbackInfo &info) {
+  auto &text_buffer = this->text_buffer;
+  if (info[0].IsTypedArray()) {
+    Uint8Array array = info[0].As<Uint8Array>();
+    uint8_t *data = array.Data();
     static vector<uint8_t> input;
-    input.assign(data, data + node::Buffer::Length(info[0]));
+    input.assign(data, data + array.ByteLength());
     Deserializer deserializer(input);
     text_buffer.deserialize_changes(deserializer);
   }
 }
 
-void TextBufferWrapper::reset(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
+void TextBufferWrapper::reset(const CallbackInfo &info) {
+  auto &text_buffer = this->text_buffer;
   auto text = string_conversion::string_from_js(info[0]);
   if (text) {
     text_buffer.reset(move(*text));
   }
 }
 
-void TextBufferWrapper::base_text_digest(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
+Napi::Value TextBufferWrapper::base_text_digest(const CallbackInfo &info) {
+  auto env = info.Env();
+  auto &text_buffer = this->text_buffer;
   std::stringstream stream;
   stream <<
     std::setfill('0') <<
     std::setw(2 * sizeof(size_t)) <<
     std::hex <<
     text_buffer.base_text().digest();
-  Local<String> result;
-  if (Nan::New(stream.str()).ToLocal(&result)) {
-    info.GetReturnValue().Set(result);
-  }
+  String result = String::New(env, stream.str());
+  return result;
 }
 
-void TextBufferWrapper::get_snapshot(const Nan::FunctionCallbackInfo<Value> &info) {
-  Nan::HandleScope scope;
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
+Napi::Value TextBufferWrapper::get_snapshot(const CallbackInfo &info) {
+  auto env = info.Env();
+  Napi::HandleScope scope(env);
+  auto &text_buffer = this->text_buffer;
   auto snapshot = text_buffer.create_snapshot();
-  info.GetReturnValue().Set(TextBufferSnapshotWrapper::new_instance(info.This(), reinterpret_cast<void *>(snapshot)));
+  return TextBufferSnapshotWrapper::new_instance(env, info.This().As<Object>(), snapshot);
 }
 
-void TextBufferWrapper::dot_graph(const Nan::FunctionCallbackInfo<Value> &info) {
-  auto &text_buffer = Nan::ObjectWrap::Unwrap<TextBufferWrapper>(info.This())->text_buffer;
-  info.GetReturnValue().Set(Nan::New<String>(text_buffer.get_dot_graph()).ToLocalChecked());
+Napi::Value TextBufferWrapper::dot_graph(const CallbackInfo &info) {
+  auto env = info.Env();
+  auto &text_buffer = this->text_buffer;
+  return String::New(env, text_buffer.get_dot_graph());
 }
 
 void TextBufferWrapper::cancel_queued_workers() {
-  for (auto worker : outstanding_workers) {
-    worker->CancelIfQueued();
+  std::lock_guard<std::mutex> guard(outstanding_workers_mutex);
+  auto env = Env();
+
+  for (auto worker: outstanding_workers) {
+    worker->Cancel();
+    if (env.IsExceptionPending()) {
+      auto e = env.GetAndClearPendingException();
+    }
   }
-  outstanding_workers.clear();
 }
