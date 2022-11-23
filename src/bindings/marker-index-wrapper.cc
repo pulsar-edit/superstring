@@ -122,12 +122,15 @@ optional<bool> MarkerIndexWrapper::bool_from_js(Napi::Value value) {
 
 void MarkerIndexWrapper::insert(const CallbackInfo &info) {
   optional<MarkerIndex::MarkerId> id = marker_id_from_js(info[0]);
-  optional<Point> start = PointWrapper::point_from_js(info[1]);
-  optional<Point> end = PointWrapper::point_from_js(info[2]);
+  if (!id) return;
 
-  if (id && start && end) {
-    this->marker_index->insert(*id, *start, *end);
-  }
+  optional<Point> start = PointWrapper::point_from_js(info[1]);
+  if (!start) return;
+
+  optional<Point> end = PointWrapper::point_from_js(info[2]);
+  if (!end) return;
+
+  this->marker_index->insert(*id, *start, *end);
 }
 
 void MarkerIndexWrapper::set_exclusive(const CallbackInfo &info) {
