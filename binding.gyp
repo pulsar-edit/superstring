@@ -23,6 +23,7 @@
             ],
             'cflags!': [ '-fno-exceptions' ],
             'cflags_cc!': [ '-fno-exceptions' ],
+            "cflags_cc": ["-std=c++17"],
             "include_dirs": [
               "src/core",
               "<!(node -e \"require('nan')\")",
@@ -85,6 +86,7 @@
                 "target_name": "tests",
                 "type": "executable",
                 "cflags_cc!": ["-fno-exceptions"],
+                "cflags_cc": ["-std=c++17"],
                 "defines": [
                     "CATCH_CONFIG_CPP11_NO_IS_ENUM"
                 ],
@@ -120,12 +122,12 @@
     ],
 
     "target_defaults": {
-        "cflags_cc": ["-std=c++11"],
+        "cflags_cc": ["-std=c++17"],
         "conditions": [
             ['OS=="mac"', {
                 "xcode_settings": {
                     'CLANG_CXX_LIBRARY': 'libc++',
-                    'CLANG_CXX_LANGUAGE_STANDARD':'c++11',
+                    'CLANG_CXX_LANGUAGE_STANDARD':'c++17',
                 }
             }],
             ['OS=="win"', {
