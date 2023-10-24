@@ -18,6 +18,12 @@ jobs:
           - 14
           - 16
           - 18
+        exclude:
+          - os: windows-latest
+            node_version: 14
+        include:
+          - os: windows-2019
+            node_version: 14
     name: Node ${{ matrix.node_version }} on ${{ matrix.os }}
 
     steps:
