@@ -1,6 +1,7 @@
 #ifndef REGEX_H_
 #define REGEX_H_
 
+#include <cstdint>
 #include "optional.h"
 #include <string>
 
