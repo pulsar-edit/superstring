@@ -42,6 +42,16 @@ jobs:
         with:
           node-version: ${{ matrix.node_version }}
 
+      - name: Setup python
+        if: matrix.node_version == 14
+        # Old versions of Node bundle old versions of npm.
+        # Old versions of npm bundle old versions of node-gyp.
+        # Old versions of node-gyp are incompatible with Python 3.11+.
+        # Install older Python (Python 3.10) as a workaround.
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
       - name: Install Python setuptools
         # This is needed for Python 3.12+, since many versions of node-gyp
         # are incompatible with Python 3.12+, which no-longer ships 'distutils'
