@@ -283,6 +283,8 @@ if (process.env.SUPERSTRING_USE_BROWSER_VERSION) {
   }
 
   TextBuffer.prototype.baseTextMatchesFile = function (source, encoding = 'UTF8') {
+    encoding = normalizeEncoding(encoding)
+
     return new Promise((resolve, reject) => {
       const callback = (error, result) => {
         if (error) {
