@@ -62,7 +62,9 @@ jobs:
           python3 -m pip install setuptools
 
       - name: Install dependencies
-        run: npm install
+        run: |
+          source CI_venv/bin/activate
+          npm install
 
       - name: Lint
         run: npm run standard
