@@ -1,31 +1,29 @@
 #ifndef SUPERSTRING_TEXT_READER_H
 #define SUPERSTRING_TEXT_READER_H
 
-#include "nan.h"
+#include "napi.h"
 #include "text.h"
 #include "text-buffer.h"
 #include "encoding-conversion.h"
 
-class TextReader : public Nan::ObjectWrap {
+class TextReader : public Napi::ObjectWrap<TextReader> {
 public:
-  static void init(v8::Local<v8::Object> exports);
-
-private:
-  TextReader(v8::Local<v8::Object> js_buffer, TextBuffer::Snapshot *snapshot,
-             EncodingConversion &&conversion);
+  static void init(Napi::Object exports);
+  TextReader(const Napi::CallbackInfo &info);
   ~TextReader();
 
-  static void construct(const Nan::FunctionCallbackInfo<v8::Value> &info);
-  static void read(const Nan::FunctionCallbackInfo<v8::Value> &info);
-  static void end(const Nan::FunctionCallbackInfo<v8::Value> &info);
-  static void destroy(const Nan::FunctionCallbackInfo<v8::Value> &info);
+private:
+  Napi::Value read(const Napi::CallbackInfo &info);
+  void end(const Napi::CallbackInfo &info);
+  void destroy(const Napi::CallbackInfo &info);
 
-  v8::Persistent<v8::Object> js_text_buffer;
+  Napi::ObjectReference js_text_buffer;
   TextBuffer::Snapshot *snapshot;
   std::vector<TextSlice> slices;
   size_t slice_index;
   size_t text_offset;
-  EncodingConversion conversion;
+  std::unique_ptr<EncodingConversion> conversion;
+  static Napi::FunctionReference constructor;
 };
 
 #endif // SUPERSTRING_TEXT_READER_H
