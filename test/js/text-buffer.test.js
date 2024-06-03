@@ -87,7 +87,9 @@ describe('TextBuffer', () => {
       fs.writeFileSync(filePath, content)
 
       const percentages = []
-      return buffer.load(filePath, (percentDone) => percentages.push(percentDone))
+      return buffer.load(filePath, (percentDone) => {
+        return percentages.push(percentDone);
+      })
         .then(() => {
           assert.equal(buffer.getText(), content)
           assert.deepEqual(percentages, percentages.map(Number).sort((a, b) => a - b))
