@@ -88,7 +88,7 @@ public:
 
   static const Regex *regex_from_js(const Napi::Value &value) {
     auto env = value.Env();
-  
+
     String js_pattern;
     bool ignore_case = false;
     bool unicode = false;
@@ -158,7 +158,9 @@ public:
     Function func = DefineClass(env, "SubsequenceMatch", {
       InstanceAccessor<&SubsequenceMatchWrapper::get_word>("word", static_cast<napi_property_attributes>(napi_enumerable | napi_configurable)),
       InstanceAccessor<&SubsequenceMatchWrapper::get_match_indices>("matchIndices", static_cast<napi_property_attributes>(napi_enumerable | napi_configurable)),
-      InstanceAccessor<&SubsequenceMatchWrapper::get_score>("score", static_cast<napi_property_attributes>(napi_enumerable | napi_configurable)),
+      InstanceAccessor<&SubsequenceMatchWrapper::get_score, &SubsequenceMatchWrapper::set_score>(
+        "score", static_cast<napi_property_attributes>(napi_enumerable | napi_configurable)
+      ),
     });
 
     constructor.Reset(func, 1);
@@ -193,6 +195,15 @@ public:
 
   Napi::Value get_score(const CallbackInfo &info) {
     return Number::New(info.Env(), this->match.score);
+  }
+
+  void set_score(const CallbackInfo &info, const Napi::Value &value) {
+    if (value.IsNumber()) {
+      this->match.score = value.As<Number>().DoubleValue();
+    } else {
+      auto env = info.Env();
+      Error::New(env, "Expected a number.").ThrowAsJavaScriptException();
+    }
   }
 
   TextBuffer::SubsequenceMatch match;
