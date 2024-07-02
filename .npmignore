@@ -9,6 +9,7 @@
 !src/bindings/*.cc
 
 !vendor/libcxx/*
+!vendor/libiconv/*
 
 !vendor/pcre/pcre.gyp
 !vendor/pcre/pcre2_chartables.c
