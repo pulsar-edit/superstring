@@ -63,7 +63,7 @@
             "conditions": [
                 ['OS=="mac"', {
                     'include_dirs': [
-                        'vendor/libiconv/include'
+                        '<(module_root_dir)/vendor/libiconv/include'
                     ],
                     'link_settings': {
                         'libraries': ['<(module_root_dir)/vendor/libiconv/lib/libiconv.2.dylib']
