@@ -16,9 +16,11 @@ if [ ! -d "$VENDOR" ]; then
   exit 1
 fi
 
+TARGET="$VENDOR/libiconv"
+
 # Make a `libiconv` directory for us to vendorize into.
 if [ ! -d "$TARGET" ]; then
-  mkdir "$VENDOR/libiconv"
+  mkdir "$TARGET"
 fi
 
 if [[ ! -z "${SUPERSTRING_LIBICONV_PATH}" ]]; then
@@ -46,6 +48,7 @@ if [ ! -d "$source" ]; then
 fi
 
 dylib_path="${source}/lib/libiconv.2.dylib"
+
 if [ ! -f "$dylib_path" ]; then
   echoerr "Invalid location for libiconv. Expected to find: ${dylib_path} but it was not present."
   usage
@@ -54,9 +57,8 @@ fi
 
 # Recursively copy the contents of the source to the destination, following
 # symlinks.
-#
-# TODO: Consider copying only libiconv.2.dylib?
-cp -RL "${source}/" "${SCRIPT_DIR}/../vendor/libiconv"
+cp -R "${source}/include" "$TARGET/"
+cp "${dylib_path}" "$TARGET/lib/"
 
 # Set the install name of this library to something neutral.
 install_name_tool -id "libiconv.2.dylib" "${dylib_path}"
