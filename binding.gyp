@@ -23,7 +23,14 @@
             ],
             "conditions": [
                 ['OS=="mac"', {
-
+                    "actions": [
+                        {
+                            "outputs": [],
+                            "inputs": [],
+                            "action": ["ls", "./vendor/libiconv/include"],
+                            "action_name": "_debug"
+                        }
+                    ],
                     "postbuilds": [
                         {
                             'postbuild_name': 'Adjust vendored libiconv install name',
