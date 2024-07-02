@@ -21,6 +21,23 @@
               "src/core",
               "<!(node -e \"require('nan')\")"
             ],
+            "conditions": [
+                ['OS=="mac"', {
+
+                    "postbuilds": [
+                        {
+                            'postbuild_name': 'Adjust vendored libiconv install name',
+                            'action': [
+                                'install_name_tool',
+                                "-change",
+                                "libiconv.2.dylib",
+                                "@loader_path/../../vendor/libiconv/lib/libiconv.2.dylib",
+                                "<(PRODUCT_DIR)/superstring.node"
+                            ]
+                        }
+                    ]
+                }]
+            ]
         },
         {
             "target_name": "superstring_core",
@@ -46,8 +63,11 @@
             ],
             "conditions": [
                 ['OS=="mac"', {
+                    'include_dirs': [
+                        '<(module_root_dir)/vendor/libiconv/include'
+                    ],
                     'link_settings': {
-                        'libraries': ['libiconv.dylib'],
+                        'libraries': ['<(module_root_dir)/vendor/libiconv/lib/libiconv.2.dylib']
                     }
                 }],
                 ['OS=="win"', {
