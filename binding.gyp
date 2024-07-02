@@ -42,7 +42,7 @@
             "target_name": "superstring_core",
             "type": "static_library",
             "dependencies": [
-                "./vendor/pcre/pcre.gyp:pcre",
+                "./vendor/pcre/pcre.gyp:pcre"
             ],
             "sources": [
                 "src/core/encoding-conversion.cc",
@@ -62,6 +62,9 @@
             ],
             "conditions": [
                 ['OS=="mac"', {
+                    'dependencies': [
+                        'find_libiconv'
+                    ],
                     'include_dirs': [
                         '<(module_root_dir)/vendor/libiconv/include'
                     ],
@@ -90,6 +93,27 @@
     },
 
     "conditions": [
+        ['OS=="mac"', {
+            'targets+': [
+                {
+                    "target_name": "find_libiconv",
+                    "target_type": "none",
+                    "actions": [
+                        {
+                            "action_name": "Run script",
+                            "message": "Locating GNU libiconv...",
+                            "inputs": [],
+                            "outputs": ["vendor/libiconv/lib/libiconv.2.dylib"],
+                            "action": [
+                                "bash",
+                                "script/find-gnu-libiconv.sh"
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }],
+
         # If --tests is passed to node-gyp configure, we'll build a standalone
         # executable that runs tests on the patch.
         ['tests != 0', {

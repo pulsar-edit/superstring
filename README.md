@@ -3,6 +3,18 @@
 
 Native library at the core of Atom's text editor.
 
+## Installation notes:
+
+On macOS 13 and greater, the OS no longer offers GNU `libiconv`; you must supply your own. The easiest way to do this is to use Homebrew…
+
+```
+brew install libiconv
+```
+
+…and this package will detect its presence and “vendorize” it automatically.
+
+Another option would be to install `libiconv` through another means and point this package to its path on disk via the `SUPERSTRING_LIBICONV_PATH` environment variable. The value of the variable should be an absolute path on disk to a directory that itself contains `lib` and `include` directories.
+
 ## Components:
 
 ### Patch
