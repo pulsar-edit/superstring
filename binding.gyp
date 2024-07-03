@@ -30,7 +30,7 @@
                                 'install_name_tool',
                                 "-change",
                                 "libiconv.2.dylib",
-                                "@loader_path/../../vendor/libiconv/lib/libiconv.2.dylib",
+                                "@loader_path/../../ext/lib/libiconv.2.dylib",
                                 "<(PRODUCT_DIR)/superstring.node"
                             ]
 
@@ -75,10 +75,10 @@
             "conditions": [
                 ['OS=="mac"', {
                     'dependencies': [
-                        'find_libiconv'
+                        'build_libiconv'
                     ],
                     'include_dirs': [
-                        '<(module_root_dir)/vendor/libiconv/include'
+                        '<(module_root_dir)/ext/include'
                     ],
                     'link_settings': {
                         'libraries': ['<(module_root_dir)/vendor/libiconv/lib/libiconv.2.dylib']
@@ -108,21 +108,37 @@
         ['OS=="mac"', {
             'targets+': [
                 {
-                    "target_name": "find_libiconv",
+                    "target_name": "build_libiconv",
                     "target_type": "none",
                     "actions": [
                         {
                             "action_name": "Run script",
-                            "message": "Locating GNU libiconv...",
+                            "message": "Building GNU libiconv...",
                             "inputs": [],
-                            "outputs": ["vendor/libiconv/lib/libiconv.2.dylib"],
+                            "outputs": ["ext"],
                             "action": [
                                 "bash",
-                                "script/find-gnu-libiconv.sh"
+                                "script/fetch-libiconv-61.sh"
                             ]
                         }
                     ]
                 }
+                # {
+                #     "target_name": "find_libiconv",
+                #     "target_type": "none",
+                #     "actions": [
+                #         {
+                #             "action_name": "Run script",
+                #             "message": "Locating GNU libiconv...",
+                #             "inputs": [],
+                #             "outputs": ["vendor/libiconv/lib/libiconv.2.dylib"],
+                #             "action": [
+                #                 "bash",
+                #                 "script/find-gnu-libiconv.sh"
+                #             ]
+                #         }
+                #     ]
+                # }
             ]
         }],
 

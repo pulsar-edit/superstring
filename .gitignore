@@ -2,6 +2,7 @@ node_modules
 build
 .DS_Store
 .clang_complete
+ext
 
 /browser.js
 emsdk-portable
