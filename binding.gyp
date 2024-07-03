@@ -81,7 +81,7 @@
                         '<(module_root_dir)/ext/include'
                     ],
                     'link_settings': {
-                        'libraries': ['<(module_root_dir)/vendor/libiconv/lib/libiconv.2.dylib']
+                        'libraries': ['<(module_root_dir)/ext/lib/libiconv.2.dylib']
                     }
                 }],
                 ['OS=="win"', {
