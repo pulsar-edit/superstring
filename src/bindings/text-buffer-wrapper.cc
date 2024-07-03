@@ -387,11 +387,11 @@ static Local<Value> encode_ranges(const vector<Range> &ranges) {
   auto length = ranges.size() * 4;
   auto buffer = v8::ArrayBuffer::New(v8::Isolate::GetCurrent(), length * sizeof(uint32_t));
   auto result = v8::Uint32Array::New(buffer, 0, length);
-  // #if (V8_MAJOR_VERSION < 8)
+  #if (V8_MAJOR_VERSION < 8)
     auto data = buffer->GetContents().Data();
-  // #else
-    // auto data = buffer->GetBackingStore()->Data();
-  // #endif
+  #else
+    auto data = buffer->GetBackingStore()->Data();
+  #endif
   memcpy(data, ranges.data(), length * sizeof(uint32_t));
   return result;
 }
@@ -615,11 +615,11 @@ void TextBufferWrapper::find_words_with_subsequence_in_range(const Nan::Function
       }
 
       auto positions_buffer = v8::ArrayBuffer::New(v8::Isolate::GetCurrent(), positions_buffer_size);
-      // #if (V8_MAJOR_VERSION < 8)
+      #if (V8_MAJOR_VERSION < 8)
         uint32_t *positions_data = reinterpret_cast<uint32_t *>(positions_buffer->GetContents().Data());
-      // #else
-      //   uint32_t *positions_data = reinterpret_cast<uint32_t *>(positions_buffer->GetBackingStore()->Data());
-      // #endif
+      #else
+        uint32_t *positions_data = reinterpret_cast<uint32_t *>(positions_buffer->GetBackingStore()->Data());
+      #endif
 
       uint32_t positions_array_index = 0;
       for (size_t i = 0; i < result.size() && i < max_count; i++) {
@@ -943,11 +943,11 @@ void TextBufferWrapper::load(const Nan::FunctionCallbackInfo<Value> &info) {
   if (!force && text_buffer.is_modified()) {
     Local<Value> argv[] = {Nan::Null(), Nan::Null()};
     auto callback = info[0].As<Function>();
-    // #if (V8_MAJOR_VERSION > 9 || (V8_MAJOR_VERSION == 9 && V8_MINOR_VERION > 4))
-    //   Nan::Call(callback, callback->GetCreationContext().ToLocalChecked()->Global(), 2, argv);
-    // #else
+    #if (V8_MAJOR_VERSION > 9 || (V8_MAJOR_VERSION == 9 && V8_MINOR_VERION > 4))
+      Nan::Call(callback, callback->GetCreationContext().ToLocalChecked()->Global(), 2, argv);
+    #else
       Nan::Call(callback, callback->CreationContext()->Global(), 2, argv);
-    // #endif
+    #endif
     return;
   }
 
@@ -1052,11 +1052,11 @@ void TextBufferWrapper::base_text_matches_file(const Nan::FunctionCallbackInfo<V
     Local<Value> argv[] = {Nan::Null(), Nan::New<Boolean>(result)};
     auto callback = info[0].As<Function>();
 
-    // #if (V8_MAJOR_VERSION > 9 || (V8_MAJOR_VERSION == 9 && V8_MINOR_VERION > 4))
-    //   Nan::Call(callback, callback->GetCreationContext().ToLocalChecked()->Global(), 2, argv);
-    // #else
+    #if (V8_MAJOR_VERSION > 9 || (V8_MAJOR_VERSION == 9 && V8_MINOR_VERION > 4))
+      Nan::Call(callback, callback->GetCreationContext().ToLocalChecked()->Global(), 2, argv);
+    #else
       Nan::Call(callback, callback->CreationContext()->Global(), 2, argv);
-    // #endif
+    #endif
   }
 }
 
