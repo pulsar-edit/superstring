@@ -33,6 +33,18 @@
                                 "@loader_path/../../vendor/libiconv/lib/libiconv.2.dylib",
                                 "<(PRODUCT_DIR)/superstring.node"
                             ]
+
+                            # NOTE: This version of the post-build action
+                            # should be used if we find it necessary to avoid
+                            # changing the `dylib`’s install name in an earlier
+                            # step.
+                            #
+                            # 'action': [
+                            #     'bash',
+                            #     '<(module_root_dir)/script/adjust-install-name.sh',
+                            #     '<(PRODUCT_DIR)'
+                            # ]
+
                         }
                     ]
                 }]

@@ -1,5 +1,18 @@
 #!/bin/bash
 
+# The purpose of this script is to find a copy of GNU `libiconv` on this macOS
+# machine. Since newer versions of macOS include a FreeBSD `libiconv`, we no
+# longer assume it's safe to use any ambient `libiconv.dylib` we find.
+#
+# For this reason, we try to detect a Homebrew installation of `libiconv`; we
+# also allow the user to install GNU `libiconv` manually and specify the path
+# via an environment variable.
+#
+# We might eventually replace this approach with an explicit vendorization of
+# the specific files needed, but that would require a universal build of
+# `libiconv.2.dylib`. For now, letting the user provide their `libiconv` has
+# the advantage of very likely matching the system's architecture.
+
 echoerr() { echo "$@\n" >&2; }
 
 usage() {
@@ -24,7 +37,7 @@ if [ ! -d "$TARGET" ]; then
 fi
 
 if [[ ! -z "${SUPERSTRING_LIBICONV_PATH}" ]]; then
-  # First is to allow the user to specify a path and override our heuristics.
+  # First, we allow the user to specify a path and override our heuristics.
   # This should propagate even if the user ran `yarn install` from a project
   # that has `superstring` as a dependency.
   source="${SUPERSTRING_LIBICONV_PATH}"
@@ -47,6 +60,7 @@ if [ ! -d "$source" ]; then
   exit 1
 fi
 
+# We expect the `dylib` we need to be at this exact path.
 dylib_path="${source}/lib/libiconv.2.dylib"
 
 if [ ! -f "$dylib_path" ]; then
@@ -55,10 +69,22 @@ if [ ! -f "$dylib_path" ]; then
   exit 1
 fi
 
-# Recursively copy the contents of the source to the destination, following
-# symlinks.
+# We need the `include` directory for compilation, plus the `libiconv.2.dylib`
+# file. We'll also copy over the README and license files for compliance.
 cp -R "${source}/include" "$TARGET/"
 cp "${dylib_path}" "$TARGET/lib/"
+cp "${source}/COPYING.LIB" "$TARGET/"
+cp "${source}/README" "$TARGET/"
 
-# Set the install name of this library to something neutral.
+
+# Set the install name of this library to something neutral and predictable to
+# make a later step easier.
+#
+# NOTE: macOS complains about this action invalidating the library's code
+# signature. This has not been observed to have any negative effects for
+# Pulsar, possibly because we sign and notarize the entire app at a later stage
+# of the build process. But if it _did_ have negative effects, we could switch
+# to a different approach and skip this step. See the `binding.gyp` file for
+# further details.
+
 install_name_tool -id "libiconv.2.dylib" "${dylib_path}"

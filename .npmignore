@@ -9,6 +9,7 @@
 !src/bindings/*.cc
 
 !script/find-gnu-libiconv.sh
+!script/adjust-install-name.sh
 
 !vendor/libcxx/*
 
