@@ -56,18 +56,36 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install Python setuptools
+      - name: Install Python setuptools (Unix-likes)
         # This is needed for Python 3.12+, since many versions of node-gyp
         # are incompatible with Python 3.12+, which no-longer ships 'distutils'
         # out of the box. 'setuptools' package provides 'distutils'.
+        if: ${{ runner.os != 'Windows' }}
         run: |
           python3 -m venv CI_venv
           source CI_venv/bin/activate
           python3 -m pip install setuptools
 
-      - name: Install dependencies
+      - name: Install Python setuptools (Windows)
+        # This is needed for Python 3.12+, since many versions of node-gyp
+        # are incompatible with Python 3.12+, which no-longer ships 'distutils'
+        # out of the box. 'setuptools' package provides 'distutils'.
+        if: ${{ runner.os == 'Windows' }}
+        run: |
+          python3 -m venv CI_venv
+          CI_venv\Scripts\activate.bat
+          python3 -m pip install setuptools
+
+      - name: Install dependencies (Unix-likes)
+        if: ${{ runner.os != 'Windows' }}
         run: |
           source CI_venv/bin/activate
+          npm install
+
+      - name: Install dependencies (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        run: |
+          CI_venv\Scripts\activate.bat
           npm install
 
       - name: Lint
