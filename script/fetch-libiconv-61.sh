@@ -5,9 +5,8 @@
 # machine. Since newer versions of macOS include a FreeBSD `libiconv`, we no
 # longer assume it's safe to use any ambient `libiconv.dylib` we find.
 #
-# For this reason, we try to detect a Homebrew installation of `libiconv`; we
-# also allow the user to install GNU `libiconv` manually and specify the path
-# via an environment variable.
+# For this reason, we download a known good version of `libiconv` from
+# https://github.com/apple-oss-distributions/libiconv/tree/libiconv-61.
 #
 # We might eventually replace this approach with an explicit vendorization of
 # the specific files needed, but that would require a universal build of
@@ -54,12 +53,25 @@ dylib_path="$EXT/lib/libiconv.2.dylib"
 # If this path already exists, we'll assume libiconv has already been fetched
 # and compiled. Otherwise we'll do it now.
 if [ ! -L "$dylib_path" ]; then
+  echo "Path $dylib_path is missing; fetching and installing libiconv."
   cd $SCRATCH
   git clone -b libiconv-61 "https://github.com/apple-oss-distributions/libiconv.git"
   cd libiconv/libiconv
   ./configure --prefix="$EXT" --libdir="$EXT/lib"
   make
   make install
+
+  if [ ! -L "$dylib_path" ]; then
+    echoerr "Error: expected $dylib_path to be present, but it was not. Cannot proceed."
+    usage
+    exit 1
+  else
+    # Remove the directories we don't need.
+    rm -rf "$EXT/bin"
+    rm -rf "$EXT/share"
+  fi
+else
+  echo "Path $dylib_path is already present; skipping installation of libiconv."
 fi
 
 cd $ROOT
