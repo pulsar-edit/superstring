@@ -1,20 +1,29 @@
-
 #!/bin/bash
 
-# The purpose of this script is to find a copy of GNU `libiconv` on this macOS
-# machine. Since newer versions of macOS include a FreeBSD `libiconv`, we no
-# longer assume it's safe to use any ambient `libiconv.dylib` we find.
+# When compiling `superstring` on macOS, we used to be able to rely on the
+# builtin version of `libiconv`. But newer versions of macOS include FreeBSD
+# `libiconv`, rather than GNU `libiconv`; the two are not API-compatible.
 #
 # For this reason, we download a known good version of `libiconv` from
 # https://github.com/apple-oss-distributions/libiconv/tree/libiconv-61.
 #
 # We might eventually replace this approach with an explicit vendorization of
 # the specific files needed, but that would require a universal build of
-# `libiconv.2.dylib`. For now, letting the user provide their `libiconv` has
-# the advantage of very likely matching the system's architecture.
+# `libiconv.2.dylib`. For now, letting the user compile their own `libiconv`
+# has the advantage of very likely matching the system's architecture.
 
 echoerr() { echo "$@\n" >&2; }
 
+create-if-missing() {
+  if [ -z "$1" ]; then
+    echoerr "Error: $1 is a file."
+    usage
+    exit 1
+  fi
+  if [ ! -d "$1" ]; then
+    mkdir "$1"
+  fi
+}
 
 usage() {
   echoerr "superstring requires the GNU libiconv library, which macOS no longer bundles in recent versions. This package attempts to compile it from GitHub. If you're seeing this message, something has gone wrong; check the README for information and consider filing an issue."
@@ -34,17 +43,6 @@ cleanup() {
 }
 trap cleanup SIGINT EXIT
 
-create-if-missing() {
-  if [ -z "$1" ]; then
-    echoerr "Error: $1 is a file."
-    usage
-    exit 1
-  fi
-  if [ ! -d "$1" ]; then
-    mkdir "$1"
-  fi
-}
-
 create-if-missing "$EXT"
 create-if-missing "$SCRATCH"
 
@@ -55,6 +53,11 @@ dylib_path="$EXT/lib/libiconv.2.dylib"
 if [ ! -L "$dylib_path" ]; then
   echo "Path $dylib_path is missing; fetching and installing libiconv."
   cd $SCRATCH
+  # TODO: Instead of downloading this each time, we can check this into source
+  # control via git subtree. That would allow someone to build this without
+  # needing internet connectivity. But we'd still need to do a `make install` —
+  # at least until we can produce a "universal" version of the `.dylib` and put
+  # _that_ in source control.
   git clone -b libiconv-61 "https://github.com/apple-oss-distributions/libiconv.git"
   cd libiconv/libiconv
   ./configure --prefix="$EXT" --libdir="$EXT/lib"
@@ -62,14 +65,18 @@ if [ ! -L "$dylib_path" ]; then
   make install
 
   if [ ! -L "$dylib_path" ]; then
-    echoerr "Error: expected $dylib_path to be present, but it was not. Cannot proceed."
+    echoerr "Error: expected $dylib_path to be present, but it was not. Installation of libiconv failed. Cannot proceed."
     usage
     exit 1
-  else
-    # Remove the directories we don't need.
-    rm -rf "$EXT/bin"
-    rm -rf "$EXT/share"
   fi
+
+  # Remove the directories we don't need.
+  rm -rf "$EXT/bin"
+  rm -rf "$EXT/share"
+
+  # Copy over the license and README from the scratch directory.
+  cp "COPYING.LIB" "$EXT"
+  cp "README" "$EXT"
 else
   echo "Path $dylib_path is already present; skipping installation of libiconv."
 fi
