@@ -12,13 +12,27 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - run: npm ci
-      - run: npm test
+      - name: Install Python setuptools
+        # Reasoning for this in `ci.yml`
+        run: |
+          python3 -m venv CI_venv
+          source CI_venv/bin/activate
+          python3 -m pip install setuptools
+      - name: Install Dependencies
+        run: |
+          source CI_venv/bin/activate
+          npm install
+      - name: Write back package.json changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+      #- run: npm ci
+      #- run: npm test
 
   # publish:
   #   needs: build
