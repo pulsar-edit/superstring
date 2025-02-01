@@ -27,6 +27,7 @@ jobs:
       - name: Install Dependencies
         run: |
           source CI_venv/bin/activate
+          npm config set python "$(which python3)"
           npm ci
       - run: |
           npm run test:node
