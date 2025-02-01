@@ -79,6 +79,7 @@ jobs:
         if: ${{ runner.os != 'Windows' }}
         run: |
           source CI_venv/bin/activate
+          npm config set python "$(which python3)"
           npm install
 
       - name: Install dependencies (Windows)
