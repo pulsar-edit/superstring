@@ -28,8 +28,8 @@ jobs:
           source CI_venv/bin/activate
           npm ci
       - run: |
-        npm run test:node
-        npm run test:native
+          npm run test:node
+          npm run test:native
 
   # publish:
   #   needs: build
