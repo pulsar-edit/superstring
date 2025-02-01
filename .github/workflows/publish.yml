@@ -7,7 +7,7 @@ on:
 
 env:
   NODE_VERSION: 16
-  #NODE_AUTH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
+  NODE_AUTH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
 
 jobs:
   build:
@@ -17,6 +17,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          registry-url: https://registry.npmjs.org/
       - name: Install Python setuptools
         # Reasoning for this in `ci.yml`
         run: |
@@ -30,15 +31,4 @@ jobs:
       - run: |
           npm run test:node
           npm run test:native
-
-  # publish:
-  #   needs: build
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: actions/setup-node@v4
-  #       with:
-  #         node-version: ${{ env.NODE_VERSION }}
-  #         registry-url: https://registry.npmjs.org/
-  #     - run: npm ci
-  #     - run: npm publish --access public
+      - run: npm publish --access public
