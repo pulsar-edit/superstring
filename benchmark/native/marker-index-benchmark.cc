@@ -2,7 +2,7 @@
 #include <iostream>
 #include <vector>
 #include <stdlib.h>
-#include "catch.hpp"
+#include "catch_amalgamated.hpp"
 #include "point.h"
 #include "range.h"
 #include "marker-index.h"
