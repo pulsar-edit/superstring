@@ -1,0 +1,33 @@
+name: NPM Publish
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: 16
+  #NODE_AUTH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm ci
+      - run: npm test
+
+  # publish:
+  #   needs: build
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: ${{ env.NODE_VERSION }}
+  #         registry-url: https://registry.npmjs.org/
+  #     - run: npm ci
+  #     - run: npm publish --access public
