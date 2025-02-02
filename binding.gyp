@@ -148,7 +148,8 @@
             "targets": [{
                 "target_name": "tests",
                 "type": "executable",
-                "cflags_cc!": ["-fno-exceptions", "-std=c++17"],
+                "cflags_cc": ["-std=c++17"],
+                "cflags_cc!": ["-fno-exceptions"],
                 "defines": [
                     "CATCH_CONFIG_CPP11_NO_IS_ENUM",
                     "CATCH_CONFIG_CPP17_STRING_VIEW"
