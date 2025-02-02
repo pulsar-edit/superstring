@@ -338,20 +338,20 @@ TEST_CASE("TextBuffer::find") {
   Regex(u"(", &error_message);
   REQUIRE(error_message == u"missing closing parenthesis");
 
-  REQUIRE(buffer.find(Regex(u"", nullptr)) == (Range{{0, 0}, {0, 0}}));
-  REQUIRE(TextBuffer().find(Regex(u"", nullptr)) == (Range{{0, 0}, {0, 0}}));
+  REQUIRE(*buffer.find(Regex(u"", nullptr)) == (Range{{0, 0}, {0, 0}}));
+  REQUIRE(*TextBuffer().find(Regex(u"", nullptr)) == (Range{{0, 0}, {0, 0}}));
 
-  REQUIRE(buffer.find(Regex(u"ef*", nullptr)) == (Range{{1, 0}, {1, 2}}));
+  REQUIRE(*buffer.find(Regex(u"ef*", nullptr)) == (Range{{1, 0}, {1, 2}}));
   REQUIRE(buffer.find(Regex(u"x", nullptr)) == optional<Range>{});
-  REQUIRE(buffer.find(Regex(u"c.", nullptr)) == (Range{{0, 2}, {0, 4}}));
-  REQUIRE(buffer.find(Regex(u"d", nullptr)) == (Range{{0, 3}, {0, 4}}));
-  REQUIRE(buffer.find(Regex(u"\\n", nullptr)) == (Range{{0, 4}, {1, 0}}));
-  REQUIRE(buffer.find(Regex(u"\\be", nullptr)) == (Range{{1, 0}, {1, 1}}));
-  REQUIRE(buffer.find(Regex(u"^e", nullptr)) == (Range{{1, 0}, {1, 1}}));
-  REQUIRE(buffer.find(Regex(u"^(e|d)g?", nullptr)) == (Range{{1, 0}, {1, 1}}));
+  REQUIRE(*buffer.find(Regex(u"c.", nullptr)) == (Range{{0, 2}, {0, 4}}));
+  REQUIRE(*buffer.find(Regex(u"d", nullptr)) == (Range{{0, 3}, {0, 4}}));
+  REQUIRE(*buffer.find(Regex(u"\\n", nullptr)) == (Range{{0, 4}, {1, 0}}));
+  REQUIRE(*buffer.find(Regex(u"\\be", nullptr)) == (Range{{1, 0}, {1, 1}}));
+  REQUIRE(*buffer.find(Regex(u"^e", nullptr)) == (Range{{1, 0}, {1, 1}}));
+  REQUIRE(*buffer.find(Regex(u"^(e|d)g?", nullptr)) == (Range{{1, 0}, {1, 1}}));
 
   buffer.reset(Text{u"a1b"});
-  REQUIRE(buffer.find(Regex(u"\\d", nullptr)) == (Range{{0, 1}, {0, 2}}));
+  REQUIRE(*buffer.find(Regex(u"\\d", nullptr)) == (Range{{0, 1}, {0, 2}}));
 }
 
 TEST_CASE("TextBuffer::find - spanning edits") {
@@ -360,17 +360,17 @@ TEST_CASE("TextBuffer::find - spanning edits") {
   buffer.set_text_in_range({{0, 9}, {0, 9}}, u"67890");
 
   REQUIRE(buffer.text() == u"ab12345cd67890");
-  REQUIRE(buffer.find(Regex(u"b1234", nullptr)) == (Range{{0, 1}, {0, 6}}));
-  REQUIRE(buffer.find(Regex(u"b12345c", nullptr)) == (Range{{0, 1}, {0, 8}}));
-  REQUIRE(buffer.find(Regex(u"b12345cd6", nullptr)) == (Range{{0, 1}, {0, 10}}));
-  REQUIRE(buffer.find(Regex(u"345[a-z][a-z]", nullptr)) == (Range{{0, 4}, {0, 9}}));
-  REQUIRE(buffer.find(Regex(u"5cd6", nullptr)) == (Range{{0, 6}, {0, 10}}));
+  REQUIRE(*buffer.find(Regex(u"b1234", nullptr)) == (Range{{0, 1}, {0, 6}}));
+  REQUIRE(*buffer.find(Regex(u"b12345c", nullptr)) == (Range{{0, 1}, {0, 8}}));
+  REQUIRE(*buffer.find(Regex(u"b12345cd6", nullptr)) == (Range{{0, 1}, {0, 10}}));
+  REQUIRE(*buffer.find(Regex(u"345[a-z][a-z]", nullptr)) == (Range{{0, 4}, {0, 9}}));
+  REQUIRE(*buffer.find(Regex(u"5cd6", nullptr)) == (Range{{0, 6}, {0, 10}}));
 
   buffer.reset(Text{u"abcdef"});
   buffer.set_text_in_range({{0, 2}, {0, 4}}, u"");
   REQUIRE(buffer.text() == u"abef");
-  REQUIRE(buffer.find(Regex(u"abe", nullptr)) == (Range{{0, 0}, {0, 3}}));
-  REQUIRE(buffer.find(Regex(u"bef", nullptr)) == (Range{{0, 1}, {0, 4}}));
+  REQUIRE(*buffer.find(Regex(u"abe", nullptr)) == (Range{{0, 0}, {0, 3}}));
+  REQUIRE(*buffer.find(Regex(u"bef", nullptr)) == (Range{{0, 1}, {0, 4}}));
   REQUIRE(buffer.find(Regex(u"bc", nullptr)) == optional<Range>{});
 }
 
