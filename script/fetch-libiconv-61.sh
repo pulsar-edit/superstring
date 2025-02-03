@@ -60,7 +60,7 @@ if [ ! -L "$dylib_path" ]; then
   # _that_ in source control.
   git clone -b libiconv-61 "https://github.com/apple-oss-distributions/libiconv.git"
   cd libiconv/libiconv
-  ./configure --prefix="$EXT" --libdir="$EXT/lib"
+  ./configure --enable-extra-encodings --prefix="$EXT" --libdir="$EXT/lib"
   make
   make install
 

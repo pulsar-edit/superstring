@@ -85,7 +85,7 @@
                     }
                 }],
                 ['OS=="win"', {
-                   'sources': [
+                    'sources': [
                        'vendor/win-iconv/win_iconv.c',
                     ],
                     'include_dirs': [
@@ -148,10 +148,16 @@
             "targets": [{
                 "target_name": "tests",
                 "type": "executable",
+                "cflags_cc": ["-std=c++17"],
                 "cflags_cc!": ["-fno-exceptions"],
                 "defines": [
-                    "CATCH_CONFIG_CPP11_NO_IS_ENUM"
+                    "CATCH_CONFIG_CPP11_NO_IS_ENUM",
+                    "CATCH_CONFIG_CPP17_STRING_VIEW"
                 ],
+                'xcode_settings': {
+                    'CLANG_CXX_LIBRARY': 'libc++',
+                    'CLANG_CXX_LANGUAGE_STANDARD': 'c++17',
+                },
                 "sources": [
                     "test/native/test-helpers.cc",
                     "test/native/tests.cc",
@@ -160,6 +166,7 @@
                     "test/native/text-buffer-test.cc",
                     "test/native/text-test.cc",
                     "test/native/text-diff-test.cc",
+                    "vendor/catch_amalgamated.cpp"
                 ],
                 "include_dirs": [
                     "vendor",
@@ -175,7 +182,7 @@
                         ],
                         "xcode_settings": {
                             "GCC_ENABLE_CPP_EXCEPTIONS": "YES",
-                            'MACOSX_DEPLOYMENT_TARGET': '10.8',
+                            'MACOSX_DEPLOYMENT_TARGET': '10.12',
                         }
                     }]
                 ]
@@ -189,7 +196,8 @@
             ['OS=="mac"', {
                 "xcode_settings": {
                     'CLANG_CXX_LIBRARY': 'libc++',
-                    'CLANG_CXX_LANGUAGE_STANDARD':'c++11',
+                    'CLANG_CXX_LANGUAGE_STANDARD': 'c++17',
+                    'GCC_SYMBOLS_PRIVATE_EXTERN': 'YES',  # -fvisibility=hidden
                 }
             }],
             ['OS=="win"', {
