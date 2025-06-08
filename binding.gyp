@@ -22,6 +22,7 @@
                 "<!(node -p \"require('node-addon-api').include_dir\")",
             ],
             "defines": [
+                "NAPI_VERSION=<(napi_build_version)",
                 "NAPI_DISABLE_CPP_EXCEPTIONS",
             ],
             "conditions": [
