@@ -155,8 +155,7 @@
                 "type": "executable",
                 "cflags_cc!": ["-fno-exceptions", "-std=c++17"],
                 "defines": [
-                    "CATCH_CONFIG_CPP11_NO_IS_ENUM",
-                    "CATCH_CONFIG_CPP17_STRING_VIEW"
+                    "CATCH_CONFIG_CPP11_NO_IS_ENUM"
                 ],
                 'xcode_settings': {
                     'CLANG_CXX_LIBRARY': 'libc++',
