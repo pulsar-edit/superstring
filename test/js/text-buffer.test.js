@@ -15,7 +15,6 @@ const isWindows = process.platform === 'win32'
 
 const encodings = [
   'big5hkscs',
-  'cp437',
   'cp850',
   'cp866',
   'cp932',
@@ -72,6 +71,12 @@ if (process.platform !== 'win32') {
     'iso885910',
     'iso885914',
     'iso885916'
+  )
+}
+
+if (process.platform === 'win32') {
+  encodings.push(
+    'cp437'
   )
 }
 
