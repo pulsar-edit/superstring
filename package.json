@@ -31,7 +31,7 @@
   },
   "homepage": "https://github.com/atom/superstring",
   "dependencies": {
-    "node-addon-api": "^7.1.1"
+    "node-addon-api": "^8.3.1"
   },
   "devDependencies": {
     "chai": "^2.0.0",
