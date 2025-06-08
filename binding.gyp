@@ -77,16 +77,6 @@
                 "vendor/libcxx"
             ],
             "conditions": [
-                ['tests != 0', {
-                    "defines": [
-                      # Define a flag we can use to skip calls to
-                      # `pcre2_jit_compile` when running native tests. For
-                      # reasons that have not yet been discovered, the test
-                      # suite segfaults during JIT compilation even though it's
-                      # never been observed to do so in production.
-                      "DISABLE_PCRE2_JIT_COMPILE"
-                    ],
-                }],
                 ['OS=="mac"', {
                     'dependencies': [
                         'build_libiconv'
@@ -115,7 +105,8 @@
     ],
 
     "variables": {
-        "tests": 0
+        "tests": 0,
+        "node_version_major%": "<!(node -p \"process.versions.node.split('.')[0]\")"
     },
 
     "conditions": [
@@ -164,8 +155,7 @@
                 "type": "executable",
                 "cflags_cc!": ["-fno-exceptions", "-std=c++17"],
                 "defines": [
-                    "CATCH_CONFIG_CPP11_NO_IS_ENUM",
-                    "CATCH_CONFIG_CPP17_STRING_VIEW"
+                    "CATCH_CONFIG_CPP11_NO_IS_ENUM"
                 ],
                 'xcode_settings': {
                     'CLANG_CXX_LIBRARY': 'libc++',
@@ -189,13 +179,42 @@
                     "superstring_core"
                 ],
                 "conditions": [
+                    ['node_version_major>=18', {
+                        "defines+": ["CATCH_CONFIG_CPP17_STRING_VIEW"]
+                    }],
                     ['OS=="mac"', {
+                        'dependencies+': [
+                            'build_libiconv'
+                        ],
                         'cflags': [
                             '-mmacosx-version-min=10.8'
                         ],
                         "xcode_settings": {
                             "GCC_ENABLE_CPP_EXCEPTIONS": "YES",
-                        }
+                        },
+                        "postbuilds": [
+                            {
+                                'postbuild_name': 'Adjust vendored libiconv install name',
+                                'action': [
+                                  'install_name_tool',
+                                  "-change",
+                                  "libiconv.2.dylib",
+                                  "@executable_path/../../ext/lib/libiconv.2.dylib",
+                                  "<(PRODUCT_DIR)/tests"
+                                ]
+
+                                # NOTE: This version of the post-build action
+                                # should be used if we find it necessary to avoid
+                                # changing the `dylib`’s install name in an earlier
+                                # step.
+                                #
+                                # 'action': [
+                                #     'bash',
+                                #     '<(module_root_dir)/script/adjust-install-name.sh',
+                                #     '<(PRODUCT_DIR)'
+                                # ]
+                            }
+                        ]
                     }]
                 ]
             }]
