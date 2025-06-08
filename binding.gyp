@@ -76,6 +76,16 @@
                 "vendor/libcxx"
             ],
             "conditions": [
+                ['tests != 0', {
+                    "defines": [
+                      # Define a flag we can use to skip calls to
+                      # `pcre2_jit_compile` when running native tests. For
+                      # reasons that have not yet been discovered, the test
+                      # suite segfaults during JIT compilation even though it's
+                      # never been observed to do so in production.
+                      "DISABLE_PCRE2_JIT_COMPILE"
+                    ],
+                }],
                 ['OS=="mac"', {
                     'dependencies': [
                         'build_libiconv'
