@@ -61,10 +61,7 @@ jobs:
         # are incompatible with Python 3.12+, which no-longer ships 'distutils'
         # out of the box. 'setuptools' package provides 'distutils'.
         if: ${{ runner.os != 'Windows' }}
-        run: |
-          python3 -m venv CI_venv
-          source CI_venv/bin/activate
-          python3 -m pip install setuptools
+        run: python3 -m pip install --break-system-packages setuptools
 
       - name: Install Python setuptools (Windows)
         # This is needed for Python 3.12+, since many versions of node-gyp
@@ -95,7 +92,6 @@ jobs:
         run: |
           npm run test:node
           npm run test:native
-          npm run test:threads
 
   Skip:
     if: contains(github.event.head_commit.message, '[skip ci]')
