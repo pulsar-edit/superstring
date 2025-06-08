@@ -155,7 +155,8 @@
                 "type": "executable",
                 "cflags_cc!": ["-fno-exceptions", "-std=c++17"],
                 "defines": [
-                    "CATCH_CONFIG_CPP11_NO_IS_ENUM"
+                    "CATCH_CONFIG_CPP11_NO_IS_ENUM",
+                    "CATCH_CONFIG_CPP17_STRING_VIEW"
                 ],
                 'xcode_settings': {
                     'CLANG_CXX_LIBRARY': 'libc++',
@@ -191,6 +192,7 @@
                         ],
                         "xcode_settings": {
                             "GCC_ENABLE_CPP_EXCEPTIONS": "YES",
+                            'MACOSX_DEPLOYMENT_TARGET': '10.12',
                         },
                         "postbuilds": [
                             {
@@ -231,7 +233,7 @@
                     'MACOSX_DEPLOYMENT_TARGET': '10.8',
                     'CLANG_CXX_LIBRARY': 'libc++',
                     'CLANG_CXX_LANGUAGE_STANDARD': 'c++17',
-                    'GCC_SYMBOLS_PRIVATE_EXTERN': 'YES', # -fvisibility=hidden
+                    'GCC_SYMBOLS_PRIVATE_EXTERN': 'YES',  # -fvisibility=hidden
                 }
             }],
             ['OS=="win"', {

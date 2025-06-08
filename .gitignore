@@ -6,7 +6,6 @@ ext
 
 /browser.js
 emsdk-portable
-package-lock.json
 
 vendor/libiconv
 .vscode
