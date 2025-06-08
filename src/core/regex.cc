@@ -76,25 +76,10 @@ Regex::Regex(const char16_t *pattern, uint32_t pattern_length, u16string *error_
     return;
   }
 
-  // We skip JIT compilation in the native tests because otherwise it
-  // segfaults in one specific test. This has never been observed to happen in
-  // a production context.
-  //
-  // TODO: Figure out the _actual_ reason why this happens. Things that have
-  // been tested and appear to be red herrings:
-  //
-  // * Happens even if we provide an explicit compile context instead of
-  //   `nullptr` above.
-  // * Happens even if we outlaw copy semantics on `Regex`es.
-  // * Happens even if we ensure each `Regex` in the suite is destroyed before
-  //   the next one is created.
-  //
-#ifndef DISABLE_PCRE2_JIT_COMPILE
-  // pcre2_jit_compile(
-  //   code,
-  //   PCRE2_JIT_COMPLETE|PCRE2_JIT_PARTIAL_HARD|PCRE2_JIT_PARTIAL_SOFT
-  // );
-#endif
+  pcre2_jit_compile(
+    code,
+    PCRE2_JIT_COMPLETE|PCRE2_JIT_PARTIAL_HARD|PCRE2_JIT_PARTIAL_SOFT
+  );
 }
 
 Regex::Regex(const u16string &pattern, u16string *error_message, bool ignore_case, bool unicode)
