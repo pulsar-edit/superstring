@@ -88,12 +88,12 @@ Regex::Regex(const char16_t *pattern, uint32_t pattern_length, u16string *error_
   // * Happens even if we outlaw copy semantics on `Regex`es.
   // * Happens even if we ensure each `Regex` in the suite is destroyed before
   //   the next one is created.
-  //   
+  //
 #ifndef DISABLE_PCRE2_JIT_COMPILE
-  pcre2_jit_compile(
-    code,
-    PCRE2_JIT_COMPLETE|PCRE2_JIT_PARTIAL_HARD|PCRE2_JIT_PARTIAL_SOFT
-  );
+  // pcre2_jit_compile(
+  //   code,
+  //   PCRE2_JIT_COMPLETE|PCRE2_JIT_PARTIAL_HARD|PCRE2_JIT_PARTIAL_SOFT
+  // );
 #endif
 }
 
