@@ -16,7 +16,7 @@ jobs:
           - windows-latest
         node_version:
           - 16
-          - '18.19.1'
+          - 18
           - 20
         include:
           - os: windows-2019
