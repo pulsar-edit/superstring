@@ -19,7 +19,7 @@ jobs:
           - 18
           - 20
         include:
-          - os: windows-2019
+          - os: windows-2022
             node_version: 14
           - os: macos-13
             node_version: 14
