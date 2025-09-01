@@ -15,13 +15,9 @@ jobs:
           - macos-latest
           - windows-latest
         node_version:
-          - 14
           - 16
-        exclude:
-          - os: windows-latest
-            node_version: 14
-          - os: macos-latest
-            node_version: 14
+          - 18
+          - 20
         include:
           - os: windows-2019
             node_version: 14
@@ -60,10 +56,7 @@ jobs:
         # are incompatible with Python 3.12+, which no-longer ships 'distutils'
         # out of the box. 'setuptools' package provides 'distutils'.
         if: ${{ runner.os != 'Windows' }}
-        run: |
-          python3 -m venv CI_venv
-          source CI_venv/bin/activate
-          python3 -m pip install setuptools
+        run: python3 -m pip install --break-system-packages setuptools
 
       - name: Install Python setuptools (Windows)
         # This is needed for Python 3.12+, since many versions of node-gyp
@@ -78,8 +71,6 @@ jobs:
       - name: Install dependencies (Unix-likes)
         if: ${{ runner.os != 'Windows' }}
         run: |
-          source CI_venv/bin/activate
-          npm config set python "$(which python3)"
           npm install
 
       - name: Install dependencies (Windows)

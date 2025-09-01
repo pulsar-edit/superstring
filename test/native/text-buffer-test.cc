@@ -342,7 +342,7 @@ TEST_CASE("TextBuffer::find") {
   REQUIRE(*TextBuffer().find(Regex(u"", nullptr)) == (Range{{0, 0}, {0, 0}}));
 
   REQUIRE(*buffer.find(Regex(u"ef*", nullptr)) == (Range{{1, 0}, {1, 2}}));
-  REQUIRE(buffer.find(Regex(u"x", nullptr)) == optional<Range>{});
+  REQUIRE(*buffer.find(Regex(u"x", nullptr)) == *optional<Range>{});
   REQUIRE(*buffer.find(Regex(u"c.", nullptr)) == (Range{{0, 2}, {0, 4}}));
   REQUIRE(*buffer.find(Regex(u"d", nullptr)) == (Range{{0, 3}, {0, 4}}));
   REQUIRE(*buffer.find(Regex(u"\\n", nullptr)) == (Range{{0, 4}, {1, 0}}));
@@ -371,12 +371,12 @@ TEST_CASE("TextBuffer::find - spanning edits") {
   REQUIRE(buffer.text() == u"abef");
   REQUIRE(*buffer.find(Regex(u"abe", nullptr)) == (Range{{0, 0}, {0, 3}}));
   REQUIRE(*buffer.find(Regex(u"bef", nullptr)) == (Range{{0, 1}, {0, 4}}));
-  REQUIRE(buffer.find(Regex(u"bc", nullptr)) == optional<Range>{});
+  REQUIRE(*buffer.find(Regex(u"bc", nullptr)) == *optional<Range>{});
 }
 
 TEST_CASE("TextBuffer::find - partial matches at EOF") {
   TextBuffer buffer{u"abc\r\ndef\r\nghi\r\n"};
-  REQUIRE(buffer.find(Regex(u"[^\r]\n", nullptr)) == optional<Range>());
+  REQUIRE(*buffer.find(Regex(u"[^\r]\n", nullptr)) == *optional<Range>());
 }
 
 TEST_CASE("TextBuffer::find_all") {

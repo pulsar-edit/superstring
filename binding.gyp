@@ -3,7 +3,7 @@
         {
             "target_name": "superstring",
             "dependencies": [
-                "superstring_core"
+                "superstring_core",
             ],
             "sources": [
                 "src/bindings/bindings.cc",
@@ -18,8 +18,12 @@
                 "src/bindings/text-writer.cc",
             ],
             "include_dirs": [
-              "src/core",
-              "<!(node -e \"require('nan')\")"
+                "src/core",
+                "<!(node -p \"require('node-addon-api').include_dir\")",
+            ],
+            "defines": [
+                "NAPI_VERSION=<(napi_build_version)",
+                "NAPI_DISABLE_CPP_EXCEPTIONS",
             ],
             "conditions": [
                 ['OS=="mac"', {
@@ -101,7 +105,8 @@
     ],
 
     "variables": {
-        "tests": 0
+        "tests": 0,
+        "node_version_major%": "<!(node -p \"process.versions.node.split('.')[0]\")"
     },
 
     "conditions": [
@@ -148,11 +153,9 @@
             "targets": [{
                 "target_name": "tests",
                 "type": "executable",
-                "cflags_cc": ["-std=c++17"],
-                "cflags_cc!": ["-fno-exceptions"],
+                "cflags_cc!": ["-fno-exceptions", "-std=c++17"],
                 "defines": [
-                    "CATCH_CONFIG_CPP11_NO_IS_ENUM",
-                    "CATCH_CONFIG_CPP17_STRING_VIEW"
+                    "CATCH_CONFIG_CPP11_NO_IS_ENUM"
                 ],
                 'xcode_settings': {
                     'CLANG_CXX_LIBRARY': 'libc++',
@@ -176,14 +179,43 @@
                     "superstring_core"
                 ],
                 "conditions": [
+                    ['node_version_major>=18', {
+                        "defines+": ["CATCH_CONFIG_CPP17_STRING_VIEW"]
+                    }],
                     ['OS=="mac"', {
+                        'dependencies+': [
+                            'build_libiconv'
+                        ],
                         'cflags': [
                             '-mmacosx-version-min=10.8'
                         ],
                         "xcode_settings": {
                             "GCC_ENABLE_CPP_EXCEPTIONS": "YES",
                             'MACOSX_DEPLOYMENT_TARGET': '10.12',
-                        }
+                        },
+                        "postbuilds": [
+                            {
+                                'postbuild_name': 'Adjust vendored libiconv install name',
+                                'action': [
+                                  'install_name_tool',
+                                  "-change",
+                                  "libiconv.2.dylib",
+                                  "@executable_path/../../ext/lib/libiconv.2.dylib",
+                                  "<(PRODUCT_DIR)/tests"
+                                ]
+
+                                # NOTE: This version of the post-build action
+                                # should be used if we find it necessary to avoid
+                                # changing the `dylib`’s install name in an earlier
+                                # step.
+                                #
+                                # 'action': [
+                                #     'bash',
+                                #     '<(module_root_dir)/script/adjust-install-name.sh',
+                                #     '<(PRODUCT_DIR)'
+                                # ]
+                            }
+                        ]
                     }]
                 ]
             }]
@@ -191,10 +223,13 @@
     ],
 
     "target_defaults": {
-        "cflags_cc": ["-std=c++11"],
+        "cflags_cc": ["-std=c++17"],
         "conditions": [
             ['OS=="mac"', {
+                'cflags+': ['-fvisibility=hidden'],
+                'cflags_cc+': ['-fvisibility=hidden'],
                 "xcode_settings": {
+                    'MACOSX_DEPLOYMENT_TARGET': '10.8',
                     'CLANG_CXX_LIBRARY': 'libc++',
                     'CLANG_CXX_LANGUAGE_STANDARD': 'c++17',
                     'GCC_SYMBOLS_PRIVATE_EXTERN': 'YES',  # -fvisibility=hidden

@@ -1,15 +1,11 @@
-#include "point-wrapper.h"
 #include <cmath>
-#include "nan.h"
 
-using namespace v8;
+#include "point-wrapper.h"
 
-static Nan::Persistent<String> row_string;
-static Nan::Persistent<String> column_string;
-static Nan::Persistent<v8::Function> constructor;
+using namespace Napi;
 
-static uint32_t number_from_js(Local<Integer> js_number) {
-  double number = Nan::To<double>(js_number).FromMaybe(0);
+static uint32_t number_from_js(Number js_number) {
+  double number = js_number.DoubleValue();
   if (number > 0 && !std::isfinite(number)) {
     return UINT32_MAX;
   } else {
@@ -17,65 +13,34 @@ static uint32_t number_from_js(Local<Integer> js_number) {
   }
 }
 
-optional<Point> PointWrapper::point_from_js(Local<Value> value) {
-  Nan::MaybeLocal<Object> maybe_object = Nan::To<Object>(value);
-  Local<Object> object;
-  if (!maybe_object.ToLocal(&object)) {
-    Nan::ThrowTypeError("Expected an object with 'row' and 'column' properties.");
+optional<Point> PointWrapper::point_from_js(Napi::Value value) {
+  Napi::Env env = value.Env();
+  if (!value.IsObject()) {
+    Error::New(env, "Expected an object with 'row' and 'column' properties.").ThrowAsJavaScriptException();
     return optional<Point>{};
   }
 
-  Nan::MaybeLocal<Integer> maybe_row = Nan::To<Integer>(Nan::Get(object, Nan::New(row_string)).ToLocalChecked());
-  Local<Integer> js_row;
-  if (!maybe_row.ToLocal(&js_row)) {
-    Nan::ThrowTypeError("Expected an object with 'row' and 'column' properties.");
+  Object object = value.As<Object>();
+  Napi::Value maybe_row = object.Get("row");
+  if (!maybe_row.IsNumber()) {
+    Error::New(env, "Expected an object with 'row' and 'column' properties.").ThrowAsJavaScriptException();
     return optional<Point>{};
   }
+  Number js_row = maybe_row.As<Number>();
 
-  Nan::MaybeLocal<Integer> maybe_column = Nan::To<Integer>(Nan::Get(object, Nan::New(column_string)).ToLocalChecked());
-  Local<Integer> js_column;
-  if (!maybe_column.ToLocal(&js_column)) {
-    Nan::ThrowTypeError("Expected an object with 'row' and 'column' properties.");
+  Napi::Value maybe_column = object.Get("column");
+  if (!maybe_column.IsNumber()) {
+    Error::New(env, "Expected an object with 'row' and 'column' properties.").ThrowAsJavaScriptException();
     return optional<Point>{};
   }
-
+  Number js_column = maybe_column.As<Number>();
   return Point(number_from_js(js_row), number_from_js(js_column));
 }
 
-void PointWrapper::init() {
-  row_string.Reset(Nan::Persistent<String>(Nan::New("row").ToLocalChecked()));
-  column_string.Reset(Nan::Persistent<String>(Nan::New("column").ToLocalChecked()));
+Value PointWrapper::from_point(Napi::Env env, Point point) {
+  Object js_point_wrapper = Object::New(env);
+  js_point_wrapper.Set("row", Number::New(env, point.row));
+  js_point_wrapper.Set("column", Number::New(env, point.column));
 
-  Local<FunctionTemplate> constructor_template = Nan::New<FunctionTemplate>(construct);
-  constructor_template->SetClassName(Nan::New<String>("Point").ToLocalChecked());
-  constructor_template->InstanceTemplate()->SetInternalFieldCount(1);
-  Nan::SetAccessor(constructor_template->InstanceTemplate(), Nan::New(row_string), get_row);
-  Nan::SetAccessor(constructor_template->InstanceTemplate(), Nan::New(column_string), get_column);
-  constructor.Reset(Nan::GetFunction(constructor_template).ToLocalChecked());
-}
-
-Local<Value> PointWrapper::from_point(Point point) {
-  Local<Object> result;
-  if (Nan::New(constructor)->NewInstance(Nan::GetCurrentContext()).ToLocal(&result)) {
-    (new PointWrapper(point))->Wrap(result);
-    return result;
-  } else {
-    return Nan::Null();
-  }
-}
-
-PointWrapper::PointWrapper(Point point) : point(point) {}
-
-void PointWrapper::construct(const Nan::FunctionCallbackInfo<Value> &info) {}
-
-void PointWrapper::get_row(v8::Local<v8::String> property, const Nan::PropertyCallbackInfo<v8::Value> &info) {
-  PointWrapper *wrapper = Nan::ObjectWrap::Unwrap<PointWrapper>(info.This());
-  Point &point = wrapper->point;
-  info.GetReturnValue().Set(Nan::New(point.row));
-}
-
-void PointWrapper::get_column(v8::Local<v8::String> property, const Nan::PropertyCallbackInfo<v8::Value> &info) {
-  PointWrapper *wrapper = Nan::ObjectWrap::Unwrap<PointWrapper>(info.This());
-  Point &point = wrapper->point;
-  info.GetReturnValue().Set(Nan::New(point.column));
+  return js_point_wrapper;
 }

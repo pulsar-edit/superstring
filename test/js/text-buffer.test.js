@@ -15,7 +15,6 @@ const isWindows = process.platform === 'win32'
 
 const encodings = [
   'big5hkscs',
-  'cp437',
   'cp850',
   'cp866',
   'cp932',
@@ -75,6 +74,12 @@ if (process.platform !== 'win32') {
   )
 }
 
+if (process.platform === 'win32') {
+  encodings.push(
+    'cp437'
+  )
+}
+
 describe('TextBuffer', () => {
   describe('.load', () => {
     if (!TextBuffer.prototype.load) return;
@@ -87,7 +92,9 @@ describe('TextBuffer', () => {
       fs.writeFileSync(filePath, content)
 
       const percentages = []
-      return buffer.load(filePath, (percentDone) => percentages.push(percentDone))
+      return buffer.load(filePath, (percentDone) => {
+        return percentages.push(percentDone);
+      })
         .then(() => {
           assert.equal(buffer.getText(), content)
           assert.deepEqual(percentages, percentages.map(Number).sort((a, b) => a - b))
@@ -1465,7 +1472,6 @@ describe('TextBuffer', () => {
       let seed = generateSeed(MAX_INT32)
       const random = new Random(seed)
       const testDocument = new TestDocument(seed)
-      console.log('Seed: ', seed);
 
       const promises = []
       const buffer = new TextBuffer(testDocument.getText())

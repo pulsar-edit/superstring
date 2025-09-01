@@ -9,7 +9,8 @@
     "build:browser": "script/build-browser-version.sh",
     "build": "npm run build:node && npm run build:browser",
     "test:native": "node ./script/test-native.js",
-    "test:node": "mocha test/js/*.js",
+    "test:node": "mocha test/js/*.test.js",
+    "test:threads": "node ./test/js/threads-outer.js",
     "test:browser": "SUPERSTRING_USE_BROWSER_VERSION=1 mocha test/js/*.js",
     "test": "npm run test:node && npm run test:browser",
     "benchmark": "node benchmark/marker-index.benchmark.js",
@@ -23,18 +24,19 @@
     "text",
     "data-structure"
   ],
+  "engines": {
+    "node": ">=16"
+  },
   "author": "Nathan Sobo <nathan@github.com>",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/atom/superstring/issues"
   },
   "homepage": "https://github.com/atom/superstring",
-  "dependencies": {
-    "nan": "^2.14.2"
-  },
   "devDependencies": {
     "chai": "^2.0.0",
     "mocha": "^2.3.4",
+    "node-addon-api": "^8.3.1",
     "random-seed": "^0.2.0",
     "standard": "^4.5.4",
     "temp": "^0.8.3",
