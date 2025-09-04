@@ -18,6 +18,7 @@
 !vendor/pcre/10.44/src/*.h
 !vendor/pcre/10.44/src/*.c
 !vendor/pcre/10.44/src/sljit/*
+!vendor/pcre/10.44/src/sljit/allocator_src/*
 !vendor/pcre/10.44/COPYING
 !vendor/pcre/10.44/LICENSE
 
