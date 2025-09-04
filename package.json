@@ -36,7 +36,6 @@
   "devDependencies": {
     "chai": "^2.0.0",
     "mocha": "^2.3.4",
-    "node-addon-api": "^8.5.0",
     "random-seed": "^0.2.0",
     "standard": "^4.5.4",
     "temp": "^0.8.3",
@@ -48,5 +47,8 @@
       "it",
       "expect"
     ]
+  },
+  "dependencies": {
+    "node-addon-api": "^8.5.0"
   }
 }
