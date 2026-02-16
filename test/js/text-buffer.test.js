@@ -13,6 +13,10 @@ const MAX_INT32 = 4294967296
 
 const isWindows = process.platform === 'win32'
 
+async function wait (ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
 const encodings = [
   'big5hkscs',
   'cp850',
@@ -1259,6 +1263,25 @@ describe('TextBuffer', () => {
         )
       }
       return Promise.all(promises)
+    })
+
+    it('doesn\'t crash when a job is cancelled', async () => {
+      function randomChar () {
+        const chars = "abcdefghijklmnopqrstuvwxyz ";
+        return chars[Math.floor(Math.random() * chars.length)];
+      }
+      let buffer = new TextBuffer(`lorem ipsum dolor sit amet, consecuetur adipiscing elit`)
+      // This test triggers a known segfault scenario in which a
+      // `FindWordsWithSubsequenceInRangeWorker` is created and then needs to
+      // be cancelled because of a subsequent call to `set_text_in_range`. Just
+      // like the test above, this one will either pass without making any
+      // assertions… or crash.
+      for (let k = 0; k < 100; k++) {
+        let ch = randomChar()
+        buffer.findWordsWithSubsequence('lor', '(){} :;,$@%', 20)
+        buffer.setTextInRange({ start: { row: 0, column: 8 }, end: { row: 0, column: 9 } }, ch)
+        await wait(Math.round(Math.random() * 20))
+      }
     })
 
     it('resolves with all words matching the given query', () => {
