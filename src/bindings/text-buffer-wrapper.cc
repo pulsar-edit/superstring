@@ -623,6 +623,11 @@ void TextBufferWrapper::find_words_with_subsequence_in_range(const CallbackInfo 
     }
 
     void OnWorkComplete(Napi::Env env, napi_status status) override {
+      {
+        std::lock_guard<std::mutex> guard(text_buffer_wrapper->outstanding_workers_mutex);
+        text_buffer_wrapper->outstanding_workers.erase(this);
+      }
+
       if (status == napi_cancelled) {
         Callback().Call({env.Null()});
       }
@@ -631,11 +636,6 @@ void TextBufferWrapper::find_words_with_subsequence_in_range(const CallbackInfo 
     }
 
     void Execute() override {
-      {
-        std::lock_guard<std::mutex> guard(text_buffer_wrapper->outstanding_workers_mutex);
-        text_buffer_wrapper->outstanding_workers.erase(this);
-      }
-
       if (!snapshot) {
         return;
       }
