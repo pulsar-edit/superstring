@@ -201,6 +201,7 @@ class TextBuffer {
 
   // Returns [lineText, lineEnding] for a given row, or null if row is out of bounds.
   _getLineInfo (row) {
+    if(row < 0) return
     const text = this._text
     let currentRow = 0
     let lineStart = 0
