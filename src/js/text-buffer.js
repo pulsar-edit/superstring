@@ -119,6 +119,10 @@ class TextBuffer {
     // from the original base text to the current text. This is used for
     // isModified() and getInvertedChanges().
     this._patch = new Patch()
+    // Monotonically increasing counter; bumped on every save() call so that
+    // concurrent saves can tell which snapshot is most recent.
+    this._saveGeneration = 0
+    this._baseGeneration = 0
   }
 
   // ---------------------------------------------------------------------------
@@ -346,6 +350,8 @@ class TextBuffer {
     this._baseText = text
     this._text = text
     this._patch = new Patch()
+    this._saveGeneration = 0
+    this._baseGeneration = 0
   }
 
   // ---------------------------------------------------------------------------
@@ -648,11 +654,49 @@ class TextBuffer {
   }
 
   // ---------------------------------------------------------------------------
-  // load / save (file I/O – optional, not present in pure-JS mode)
+  // save (file I/O)
   // ---------------------------------------------------------------------------
-  // These are not implemented in the pure-JS layer. The index.js native mode
-  // layer adds them via the native bindings. We just don't define them here,
-  // so that the test check `if (!TextBuffer.prototype.load) return` works.
+  // Accepts a file path string or a writable stream. Snapshots the current text
+  // at call time, writes it asynchronously, then marks the buffer as unmodified
+  // (resets _baseText) once the write completes.
+  // The optional encoding argument is accepted for API compatibility but ignored
+  // in the pure-JS implementation (always writes UTF-8).
+
+  save (destination, _encoding) {
+    const fs = require('fs')
+    const snapshot = this._text
+    const generation = ++this._saveGeneration
+
+    return new Promise((resolve, reject) => {
+      const onDone = (err) => {
+        if (err) return reject(err)
+        // Advance the base to this snapshot if this save is newer than the
+        // last one that updated the base. This correctly handles concurrent
+        // saves: the most-recent save (highest generation) wins, ensuring
+        // isModified() returns false once all saves settle on the same text.
+        if (generation > this._baseGeneration) {
+          this._baseText = snapshot
+          this._baseGeneration = generation
+          if (this._text === snapshot) {
+            this._patch = new Patch()
+          }
+        }
+        resolve()
+      }
+
+      if (typeof destination === 'string') {
+        fs.writeFile(destination, snapshot, 'utf8', onDone)
+      } else {
+        // Writable stream
+        const stream = destination
+        stream.on('error', reject)
+        stream.write(snapshot, 'utf8', (err) => {
+          if (err) return reject(err)
+          stream.end(() => onDone(null))
+        })
+      }
+    })
+  }
 
   // ---------------------------------------------------------------------------
   // getDotGraph (for debugging)
