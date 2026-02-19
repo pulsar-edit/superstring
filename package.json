@@ -5,9 +5,6 @@
   "main": "./index",
   "browser": "./browser",
   "scripts": {
-    "build:node": "node-gyp rebuild",
-    "build:browser": "script/build-browser-version.sh",
-    "build": "npm run build:node && npm run build:browser",
     "test:native": "node ./script/test-native.js",
     "test:node": "mocha test/js/*.test.js",
     "test:threads": "node ./test/js/threads-outer.js",
@@ -47,8 +44,5 @@
       "it",
       "expect"
     ]
-  },
-  "dependencies": {
-    "node-addon-api": "^8.5.0"
   }
 }
