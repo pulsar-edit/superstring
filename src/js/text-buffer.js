@@ -254,6 +254,15 @@ class TextBuffer {
     return info.ending
   }
 
+  getLines () {
+    const rowCount = textExtent(this._text).row + 1
+    const lines = new Array(rowCount)
+    for (let row = 0; row < rowCount; row++) {
+      lines[row] = this._getLineInfo(row).text
+    }
+    return lines
+  }
+
   // ---------------------------------------------------------------------------
   // Modified state
   // ---------------------------------------------------------------------------
