@@ -843,14 +843,16 @@ class MarkerIndex {
 
   getStart (id) {
     const node = this._startNodesById.get(id)
-    if (!node) return ZERO
-    return this._getNodePosition(node)
+    if (!node) return {row: 0, column: 0}
+    const p = this._getNodePosition(node)
+    return {row: p.row, column: p.column}
   }
 
   getEnd (id) {
     const node = this._endNodesById.get(id)
-    if (!node) return ZERO
-    return this._getNodePosition(node)
+    if (!node) return {row: 0, column: 0}
+    const p = this._getNodePosition(node)
+    return {row: p.row, column: p.column}
   }
 
   getRange (id) {
