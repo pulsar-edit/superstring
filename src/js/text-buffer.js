@@ -663,6 +663,84 @@ class TextBuffer {
   }
 
   // ---------------------------------------------------------------------------
+  // load (file I/O)
+  // ---------------------------------------------------------------------------
+  // Accepts a file path string or a readable stream, plus options:
+  //   encoding    – ignored in pure-JS (always read as UTF-8)
+  //   force       – if false (default) and buffer is modified, resolve null
+  //   patch       – if true (default), compute and return a Patch from the
+  //                 current buffer text to the loaded file text
+  //
+  // Returns a Promise that resolves to a Patch or null.
+
+  load (source, options) {
+    const fs = require('fs')
+    const computePatch = !options || options.patch !== false
+    const force = options && options.force === true
+
+    if (!force && this.isModified()) {
+      return Promise.resolve(null)
+    }
+
+    const readAll = (source) => new Promise((resolve, reject) => {
+      if (typeof source === 'string') {
+        fs.readFile(source, 'utf8', (err, data) => {
+          if (err) reject(err)
+          else resolve(data)
+        })
+      } else {
+        const chunks = []
+        source.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk.toString('utf8') : chunk))
+        source.on('error', reject)
+        source.on('end', () => resolve(chunks.join('')))
+      }
+    })
+
+    return readAll(source).then((newText) => {
+      const oldText = this._text
+      let resultPatch = null
+
+      if (computePatch) {
+        // Build patch from current buffer text → file text.
+        // If the buffer has no pending changes, this is just base→file.
+        // If it does, we need: invert(current→base) composed with base→file,
+        // which equals current→file.
+        const baseToFile = new Patch()
+        if (this._baseText !== newText) {
+          baseToFile.splice(
+            ZERO,
+            textExtent(this._baseText),
+            textExtent(newText),
+            this._baseText,
+            newText
+          )
+        }
+
+        if (this._text !== this._baseText) {
+          // inverted current patch: current→base
+          const currentToBase = new Patch()
+          currentToBase.splice(
+            ZERO,
+            textExtent(this._text),
+            textExtent(this._baseText),
+            this._text,
+            this._baseText
+          )
+          resultPatch = Patch.compose([currentToBase, baseToFile])
+        } else {
+          resultPatch = baseToFile
+        }
+      }
+
+      this._text = newText
+      this._baseText = newText
+      this._patch = new Patch()
+
+      return resultPatch
+    })
+  }
+
+  // ---------------------------------------------------------------------------
   // save (file I/O)
   // ---------------------------------------------------------------------------
   // Accepts a file path string or a writable stream. Snapshots the current text
