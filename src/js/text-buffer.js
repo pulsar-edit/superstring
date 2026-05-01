@@ -123,6 +123,25 @@ class TextBuffer {
     // concurrent saves can tell which snapshot is most recent.
     this._saveGeneration = 0
     this._baseGeneration = 0
+    // Cached array of line-start offsets, lazily built. Index i holds the
+    // character offset of the start of row i. Invalidated by setting to null
+    // on any text mutation.
+    this._lineStarts = null
+  }
+
+  _getLineStarts () {
+    if (this._lineStarts) return this._lineStarts
+    const text = this._text
+    const starts = [0]
+    for (let i = 0; i < text.length; i++) {
+      if (text.charCodeAt(i) === 10) starts.push(i + 1)
+    }
+    this._lineStarts = starts
+    return starts
+  }
+
+  _invalidateLineStarts () {
+    this._lineStarts = null
   }
 
   // ---------------------------------------------------------------------------
@@ -140,6 +159,7 @@ class TextBuffer {
     const newExtent = textExtent(newText)
     // Replace entire content
     this._text = newText
+    this._invalidateLineStarts()
     this._patch.splice(ZERO, oldExtent, newExtent, oldText, newText)
     this._patch._removeNoopChange()
   }
@@ -160,6 +180,7 @@ class TextBuffer {
     const offset1 = textOffsetForPoint(this._text, s)
     const offset2 = textOffsetForPoint(this._text, e)
     this._text = this._text.slice(0, offset1) + newText + this._text.slice(offset2)
+    this._invalidateLineStarts()
 
     // Update patch
     this._patch.splice(s, oldExtent, newExtent, oldText, newText)
@@ -203,61 +224,39 @@ class TextBuffer {
   // Line helpers
   // ---------------------------------------------------------------------------
 
-  // Returns [lineText, lineEnding] for a given row, or null if row is out of bounds.
+  // Returns {text, ending} for a given row, or undefined if row is out of bounds.
   _getLineInfo (row) {
-    if(row < 0) return
-    // const text = this._text
-    // let currentRow = 0
-    // let lineStart = 0
-    //
-    // while (currentRow < row) {
-    //   const nl = text.indexOf('\n', lineStart)
-    //   if (nl === -1) return null // row out of bounds
-    //   lineStart = nl + 1
-    //   currentRow++
-    // }
-    //
-    // // Find end of this line
-    // const nl = text.indexOf('\n', lineStart)
-    // const lineEndWithEnding = nl === -1 ? text.length : nl
-    // let lineEnd = lineEndWithEnding
-    // let ending = ''
-    //
-    // if (nl !== -1) {
-    //   // Could be \r\n
-    //   if (lineEnd > lineStart && text.charCodeAt(lineEnd - 1) === 13) {
-    //     lineEnd--
-    //     ending = '\r\n'
-    //   } else {
-    //     ending = '\n'
-    //   }
-    // }
-    //
-    const line = this._text.split(/(?<=\r?\n)/)[row]
-    if (line === undefined) return
-    const lastChar = line.length - 1
-    let ending = ''
-    if (line[lastChar] == "\n") {
-      if (line[lastChar-1] == "\r") {
-        ending = "\r\n"
-      } else {
-        ending = "\n"
-      }
+    if (row < 0) return
+    const lines = this._text.split(/(?<=\n)/)
+    // A trailing newline produces a virtual empty line at the end
+    const lastIdx = lines.length - 1
+    if (lastIdx >= 0 && /\n$/.test(lines[lastIdx])) {
+      lines.push('')
     }
-    return {text: line, ending}
+    const line = lines[row]
+    if (line === undefined) return
+    let text = line
+    let ending = ''
+    if (text.endsWith('\r\n')) {
+      ending = '\r\n'
+      text = text.slice(0, -2)
+    } else if (text.endsWith('\n')) {
+      ending = '\n'
+      text = text.slice(0, -1)
+    }
+    return {text, ending}
   }
 
   lineForRow (row) {
-    // const info = this._getLineInfo(row)
-    // if (!info) return undefined
-    // return info.text
-    return this.getLines()[row]
+    const info = this._getLineInfo(row)
+    if (!info) return undefined
+    return info.text
   }
 
   lineLengthForRow (row) {
     const info = this._getLineInfo(row)
     if (!info) return undefined
-    return this.lineForRow(row)?.length
+    return info.text.length
   }
 
   lineEndingForRow (row) {
@@ -267,12 +266,12 @@ class TextBuffer {
   }
 
   getLines () {
-    // const rowCount = textExtent(this._text).row + 1
-    // const lines = new Array(rowCount)
-    // for (let row = 0; row < rowCount; row++) {
-    //   lines[row] = this._getLineInfo(row).text
-    // }
-    return this._text.split(/\r?\n/)
+    const rowCount = textExtent(this._text).row + 1
+    const lines = new Array(rowCount)
+    for (let row = 0; row < rowCount; row++) {
+      lines[row] = this._getLineInfo(row).text
+    }
+    return lines
   }
 
   // ---------------------------------------------------------------------------
@@ -325,43 +324,31 @@ class TextBuffer {
   // ---------------------------------------------------------------------------
 
   getCharacterAtPosition (point) {
-    const ext = textExtent(this._text)
-    // Don't clip – out of bounds returns null char or newline
     let {row, column} = point
     if (row < 0) row = 0
     if (column < 0) column = 0
 
-    // Find the line
     const text = this._text
-    let currentRow = 0
-    let lineStart = 0
+    const starts = this._getLineStarts()
 
-    while (currentRow < row) {
-      const nl = text.indexOf('\n', lineStart)
-      if (nl === -1) return '\u0000' // past end
-      lineStart = nl + 1
-      currentRow++
-    }
+    if (row >= starts.length) return ' '
 
-    // Find end of line
-    const nl = text.indexOf('\n', lineStart)
-    let lineEnd = nl === -1 ? text.length : nl
+    const lineStart = starts[row]
+    const hasNextLine = row + 1 < starts.length
+    const lineEnd = hasNextLine ? starts[row + 1] - 1 : text.length
 
-    // Strip \r if present
     let lineContentEnd = lineEnd
     if (lineContentEnd > lineStart && text.charCodeAt(lineContentEnd - 1) === 13) {
       lineContentEnd--
     }
 
     if (column >= lineContentEnd - lineStart) {
-      // At or past end of line content – return newline or null
-      if (nl !== -1) return '\n'
-      return '\u0000'
+      if (hasNextLine) return '\n'
+      return ' '
     }
 
     return text[lineStart + column]
   }
-
   // ---------------------------------------------------------------------------
   // Reset (sets base text and clears modified state)
   // ---------------------------------------------------------------------------
@@ -370,6 +357,7 @@ class TextBuffer {
     if (typeof text !== 'string') text = String(text)
     this._baseText = text
     this._text = text
+    this._invalidateLineStarts()
     this._patch = new Patch()
     this._saveGeneration = 0
     this._baseGeneration = 0
@@ -430,6 +418,7 @@ class TextBuffer {
       const offset1 = textOffsetForPoint(this._text, s)
       const offset2 = textOffsetForPoint(this._text, e)
       this._text = this._text.slice(0, offset1) + newText + this._text.slice(offset2)
+      this._invalidateLineStarts()
     }
     this._patch = patch
   }
@@ -746,6 +735,7 @@ class TextBuffer {
 
       this._text = newText
       this._baseText = newText
+      this._invalidateLineStarts()
       this._patch = new Patch()
 
       return resultPatch
