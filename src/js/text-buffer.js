@@ -209,15 +209,14 @@ class TextBuffer {
   }
 
   getExtent () {
-    return textExtent(this._text)
+    const text = this._text
+    const starts = this._getLineStarts()
+    const lastRow = starts.length - 1
+    return {row: lastRow, column: text.length - starts[lastRow]}
   }
 
   getLineCount () {
-    let count = 1
-    for (let i = 0; i < this._text.length; i++) {
-      if (this._text.charCodeAt(i) === 10) count++
-    }
-    return count
+    return this._getLineStarts().length
   }
 
   // ---------------------------------------------------------------------------
@@ -315,7 +314,7 @@ class TextBuffer {
     if (row < 0 || row == null) row = 0
     if (column < 0 || column == null) column = 0
 
-    const ext = textExtent(this._text)
+    const ext = this.getExtent()
     if (row > ext.row) { row = ext.row; column = ext.column }
     else if (row === ext.row && column > ext.column) { column = ext.column }
 
