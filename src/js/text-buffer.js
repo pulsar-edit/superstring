@@ -560,7 +560,9 @@ class TextBuffer {
     }
   }
 
-  // Internal: find first match in text (with optional range restriction)
+  // Internal: find first match in text (with optional range restriction).
+  // The `text` parameter is always this._text in practice; we keep it for the
+  // signature but use this._text directly so we can use the cached line-starts.
   _findInText (text, pattern, range) {
     const re = compilePattern(pattern)
 
@@ -572,8 +574,8 @@ class TextBuffer {
     if (range) {
       const start = this._clipPoint(range.start)
       const end = this._clipPoint(range.end)
-      charOffset = textOffsetForPoint(text, start)
-      const endOffset = textOffsetForPoint(text, end)
+      charOffset = this._offsetForPosition(start)
+      const endOffset = this._offsetForPosition(end)
       searchText = text.slice(charOffset, endOffset)
       rowOffset = start.row
       columnOffset = start.column
@@ -583,7 +585,6 @@ class TextBuffer {
     const match = re.exec(searchText)
     if (!match) return null
 
-    // Convert match offsets to row/column positions
     const startPos = textPositionForOffset(searchText, match.index)
     const endPos = textPositionForOffset(searchText, match.index + match[0].length)
 
@@ -593,7 +594,10 @@ class TextBuffer {
     }
   }
 
-  // Internal: find all matches in text (with optional range restriction)
+  // Internal: find all matches in text (with optional range restriction).
+  // Hot path during find/replace and tree-sitter syntax queries — O(N) over
+  // the search region by tracking row/column incrementally between matches
+  // instead of rescanning the prefix on every textPositionForOffset call.
   _findAllInText (text, pattern, range) {
     const re = compilePattern(pattern)
     const results = []
@@ -607,8 +611,8 @@ class TextBuffer {
     if (range) {
       const start = this._clipPoint(range.start)
       const end = this._clipPoint(range.end)
-      charOffset = textOffsetForPoint(text, start)
-      endOffset = textOffsetForPoint(text, end)
+      charOffset = this._offsetForPosition(start)
+      endOffset = this._offsetForPosition(end)
       searchText = text.slice(charOffset, endOffset)
       rowOffset = start.row
       columnOffset = start.column
@@ -618,19 +622,32 @@ class TextBuffer {
     let match
     let lastIndex = 0
 
+    // Walk searchText once, advancing (row, col) between match positions.
+    let scanRow = 0
+    let scanCol = 0
+    let scanIdx = 0
+    const advanceTo = (target) => {
+      while (scanIdx < target) {
+        if (searchText.charCodeAt(scanIdx) === 10) { scanRow++; scanCol = 0 }
+        else { scanCol++ }
+        scanIdx++
+      }
+    }
+
     while ((match = re.exec(searchText)) !== null) {
       const matchStart = match.index
       const matchEnd = match.index + match[0].length
 
-      const startPos = textPositionForOffset(searchText, matchStart)
-      const endPos = textPositionForOffset(searchText, matchEnd)
+      advanceTo(matchStart)
+      const startPos = {row: scanRow, column: scanCol}
+      advanceTo(matchEnd)
+      const endPos = {row: scanRow, column: scanCol}
 
       results.push({
         start: _addOffset(startPos, rowOffset, columnOffset),
         end: _addOffset(endPos, rowOffset, columnOffset)
       })
 
-      // Avoid infinite loop on zero-length matches
       if (matchEnd === lastIndex) {
         re.lastIndex++
       }
