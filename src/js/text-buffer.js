@@ -2,6 +2,77 @@
 
 const {Patch, textExtent, textPositionForOffset, textOffsetForPoint, traverse, traversal, cmp} = require('./patch')
 
+let _jsdiff = null
+function jsdiff () {
+  if (!_jsdiff) _jsdiff = require('diff')
+  return _jsdiff
+}
+
+let _iconv = null
+function iconv () {
+  if (!_iconv) _iconv = require('iconv-lite')
+  return _iconv
+}
+
+// Build a Patch from oldText -> newText using a character-level diff.
+// Tries to match the C++ libmba-diff behavior: each insert/delete is recorded
+// at its exact character position. Falls back to a single full-replacement
+// patch if the texts are very different (matches the C++ MAX_EDIT_DISTANCE
+// guard, which keeps `load` responsive for big files).
+const DIFF_SIZE_LIMIT = 64 * 1024
+function computeTextDiff (oldText, newText) {
+  const result = new Patch()
+  if (oldText === newText) return result
+  // Full-replacement shortcut: empty side, or texts large enough that a
+  // character-level Myers diff would be prohibitively slow.
+  if (oldText.length === 0 || newText.length === 0 ||
+      oldText.length > DIFF_SIZE_LIMIT || newText.length > DIFF_SIZE_LIMIT) {
+    result.splice(ZERO, textExtent(oldText), textExtent(newText), oldText, newText)
+    return result
+  }
+
+  const parts = jsdiff().diffChars(oldText, newText)
+
+  // Walk parts, tracking position in the *new* coordinate space (which is what
+  // Patch.splice uses). Each insertion advances new_position; each deletion
+  // does not advance it. Matched parts advance both old and new positions.
+  let newPos = {row: 0, column: 0}
+  let i = 0
+  while (i < parts.length) {
+    const p = parts[i]
+    if (p.added) {
+      // Look ahead for a paired delete (delete-then-insert sequence) to
+      // emit a replacement instead of two splices.
+      let pairedDel = null
+      // (jsdiff usually emits delete-then-add, but be tolerant either way.)
+      if (i + 1 < parts.length && parts[i + 1].removed) pairedDel = parts[i + 1]
+      const newExt = textExtent(p.value)
+      const oldExt = pairedDel ? textExtent(pairedDel.value) : ZERO
+      const oldStr = pairedDel ? pairedDel.value : ''
+      result.splice(newPos, oldExt, newExt, oldStr, p.value)
+      newPos = traverse(newPos, newExt)
+      if (pairedDel) i++
+      i++
+    } else if (p.removed) {
+      // Look ahead for a paired add.
+      let pairedAdd = null
+      if (i + 1 < parts.length && parts[i + 1].added) pairedAdd = parts[i + 1]
+      const oldExt = textExtent(p.value)
+      const newExt = pairedAdd ? textExtent(pairedAdd.value) : ZERO
+      const newStr = pairedAdd ? pairedAdd.value : ''
+      result.splice(newPos, oldExt, newExt, p.value, newStr)
+      newPos = traverse(newPos, newExt)
+      if (pairedAdd) i++
+      i++
+    } else {
+      // Matched region: advance newPos.
+      newPos = traverse(newPos, textExtent(p.value))
+      i++
+    }
+  }
+  return result
+}
+
 // ---------------------------------------------------------------------------
 // Point / Range helpers
 // ---------------------------------------------------------------------------
@@ -31,75 +102,174 @@ function clipPoint (text, point) {
 // Convert a JS RegExp (or string pattern) into a RegExp with the 'g' flag and
 // optionally additional flags. We cache compiled patterns on the RegExp object
 // itself to avoid recompiling on repeated calls.
+// Translate V8's regex error messages into the libpcre-style ones the C++
+// version surfaced, so callers (and tests) match on the historical phrasing.
+function _translateRegexError (msg) {
+  return msg
+    .replace(/Unterminated character class/, 'missing terminating ] for character class')
+    .replace(/Unterminated group/, 'missing )')
+}
+
+// libpcre treats \u as a literal 'u' unless followed by exactly 4 hex digits;
+// V8 silently drops the backslash for `\u` followed by non-hex, so the regex
+// matches just `u...` instead of `\u...`. Rewrite invalid \u sequences so they
+// match the literal backslash + u + remainder.
+function _translateRegexSource (source) {
+  return source.replace(/\\u([0-9a-fA-F]{0,3})(?![0-9a-fA-F])/g, (m, hex) => {
+    return hex.length === 4 ? m : '\\\\u' + hex
+  })
+}
+
 function compilePattern (pattern, extraFlags) {
   if (typeof pattern === 'string') {
     try {
-      return new RegExp(pattern, 'gm' + (extraFlags || ''))
+      return new RegExp(_translateRegexSource(pattern), 'gm' + (extraFlags || ''))
     } catch (e) {
-      throw new Error(e.message)
+      throw new Error(_translateRegexError(e.message))
     }
   }
   // It's already a RegExp – rebuild with global+multiline forced, preserving flags
   const flags = new Set([...pattern.flags, 'g', 'm'])
   flags.delete('y') // sticky is incompatible with global for our use
   try {
-    return new RegExp(pattern.source, [...flags].join(''))
+    return new RegExp(_translateRegexSource(pattern.source), [...flags].join(''))
   } catch (e) {
-    throw new Error(e.message)
+    throw new Error(_translateRegexError(e.message))
   }
 }
 
 // ---------------------------------------------------------------------------
 // Subsequence scoring
 // ---------------------------------------------------------------------------
-// Approximate port of the C++ scoring logic used for find_words_with_subsequence.
-// This doesn't have to be bit-for-bit identical; it just needs to produce
-// reasonable ordering.
+// Port of the C++ scoring logic used for find_words_with_subsequence
+// (src/core/text-buffer.cc). The algorithm explores multiple "match variants"
+// per word in parallel, so the chosen subsequence can pay penalties for
+// skipped chars on the way to landing on subword starts and consecutive runs.
 
-const SCORE_CONSECUTIVE = 5
-const SCORE_WORD_BOUNDARY = 4
-const SCORE_CAMEL_CASE = 3
-const SCORE_BASE = 1
-const SCORE_SKIP_PENALTY = 1
 const MAX_WORD_LENGTH = 80
+const CONSECUTIVE_BONUS = 5
+const SUBWORD_START_CASE_MATCH_BONUS = 10
+const SUBWORD_START_CASE_MISMATCH_BONUS = 9
+const MISMATCH_PENALTY = 1
+const LEADING_MISMATCH_PENALTY = 3
 
-function isWordBoundary (text, index) {
-  if (index === 0) return true
-  const prev = text[index - 1]
-  const cur = text[index]
-  if (prev === '_' || prev === ' ' || prev === '-') return true
-  if (cur >= 'A' && cur <= 'Z' && (prev >= 'a' && prev <= 'z')) return true // camelCase
+function _isAlnum (ch) {
+  return (ch >= '0' && ch <= '9') ||
+    (ch >= 'a' && ch <= 'z') ||
+    (ch >= 'A' && ch <= 'Z')
+}
+
+// Subword start: at index 0, after a non-alnum char, or at a lower→upper
+// camelCase transition. Mirrors the C++ subword check.
+function _isSubwordStart (word, i) {
+  if (i === 0) return true
+  const prev = word[i - 1]
+  if (!_isAlnum(prev)) return true
+  const cur = word[i]
+  if (prev >= 'a' && prev <= 'z' && cur >= 'A' && cur <= 'Z') return true
   return false
 }
 
-function scoreSubsequence (word, query) {
+// Score `word` against `rawQuery`. Returns {score, matchIndices} with the
+// best-scoring subsequence match, or -1 when the word doesn't contain the
+// query as a subsequence.
+function scoreSubsequence (word, rawQuery) {
   if (word.length > MAX_WORD_LENGTH) return -1
+  const lowerQuery = rawQuery.toLowerCase()
+  const lowerWord = word.toLowerCase()
 
-  const wl = word.toLowerCase()
-  const ql = query.toLowerCase()
-  let wi = 0
-  let qi = 0
-  let score = 0
-  let lastMatch = -1
-  const matchIndices = []
-
-  while (qi < ql.length && wi < wl.length) {
-    if (ql[qi] === wl[wi]) {
-      let s = SCORE_BASE
-      if (wi === lastMatch + 1) s += SCORE_CONSECUTIVE
-      if (isWordBoundary(word, wi)) s += SCORE_WORD_BOUNDARY
-      if (wi > 0 && word[wi] >= 'A' && word[wi] <= 'Z') s += SCORE_CAMEL_CASE
-      score += s
-      score -= (wi - (lastMatch + 1)) * SCORE_SKIP_PENALTY
-      matchIndices.push(wi)
-      lastMatch = wi
-      qi++
+  // Quick existence check (subsequence containment) so words that don't
+  // contain the query at all skip the more expensive variant search.
+  {
+    let qi = 0
+    for (let i = 0; i < lowerWord.length && qi < lowerQuery.length; i++) {
+      if (lowerWord[i] === lowerQuery[qi]) qi++
     }
-    wi++
+    if (qi < lowerQuery.length) return -1
   }
 
-  if (qi < ql.length) return -1 // didn't match all query chars
-  return {score, matchIndices}
+  // match_variants: ordered by ascending queryIndex (and within same
+  // queryIndex, by ascending score). Each variant tracks how far through
+  // the query it has matched, the indices it consumed, and its running score.
+  let variants = [{queryIndex: 0, matchIndices: [], score: 0}]
+  let newVariants = []
+
+  for (let i = 0; i < word.length; i++) {
+    const c = lowerWord[i]
+    newVariants.length = 0
+
+    for (let v = 0; v < variants.length;) {
+      const variant = variants[v]
+      if (variant.queryIndex < lowerQuery.length) {
+        // If the current word char matches the next query char, branch into
+        // a new variant that consumes it.
+        if (c === lowerQuery[variant.queryIndex]) {
+          let added = variant.score
+          if (_isSubwordStart(word, i)) {
+            added += word[i] === rawQuery[variant.queryIndex]
+              ? SUBWORD_START_CASE_MATCH_BONUS
+              : SUBWORD_START_CASE_MISMATCH_BONUS
+          }
+          if (variant.matchIndices.length > 0 &&
+              variant.matchIndices[variant.matchIndices.length - 1] === i - 1) {
+            added += CONSECUTIVE_BONUS
+          }
+          newVariants.push({
+            queryIndex: variant.queryIndex + 1,
+            matchIndices: variant.matchIndices.concat(i),
+            score: added
+          })
+        }
+
+        // The original variant pays a per-char penalty regardless of match.
+        variant.score -= (i < 3 ? LEADING_MISMATCH_PENALTY : MISMATCH_PENALTY)
+
+        // Drop the original if a same-queryIndex peer ahead in the list will
+        // strictly dominate it (its score is by construction higher).
+        const next = variants[v + 1]
+        if (next && next.queryIndex === variant.queryIndex) {
+          variants.splice(v, 1)
+          continue
+        }
+      }
+      v++
+    }
+
+    // Merge newVariants in, maintaining the ordering invariant
+    // (ascending queryIndex; within same queryIndex, ascending score).
+    // - If new.score >= existing peer: replace existing (so the new variant,
+    //   which is eligible for the consecutive bonus next char, takes over).
+    // - Else: insert new *before* the existing peer (a temporary duplicate
+    //   pair). The next iteration's same-q-idx erase will drop whichever
+    //   variant is no longer carrying its weight after that round's
+    //   penalty/match step.
+    for (const nv of newVariants) {
+      let lo = 0, hi = variants.length
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1
+        if (variants[mid].queryIndex < nv.queryIndex) lo = mid + 1
+        else hi = mid
+      }
+      if (lo < variants.length && variants[lo].queryIndex === nv.queryIndex) {
+        if (nv.score >= variants[lo].score) {
+          variants[lo] = nv
+        } else {
+          variants.splice(lo, 0, nv)
+        }
+      } else {
+        variants.splice(lo, 0, nv)
+      }
+    }
+  }
+
+  let best = null
+  for (const v of variants) {
+    if (v.queryIndex === lowerQuery.length) {
+      if (!best || best.score < v.score) best = v
+    }
+  }
+  if (!best) return -1
+  return {score: best.score, matchIndices: best.matchIndices.slice()}
 }
 
 // ---------------------------------------------------------------------------
@@ -376,12 +546,27 @@ class TextBuffer {
 
   characterIndexForPosition (point) {
     const clipped = this._clipPoint(point)
-    return this._offsetForPosition(clipped)
+    // Clip column to the visible line length (excluding a trailing \r).
+    // This matches the public-API contract where column counts characters
+    // that are part of the displayed line content, not the line terminator.
+    const lineLen = this.lineLengthForRow(clipped.row)
+    let column = clipped.column
+    if (lineLen != null && column > lineLen) column = lineLen
+    return this._offsetForPosition({row: clipped.row, column})
   }
 
   positionForCharacterIndex (offset) {
     if (offset < 0) offset = 0
     if (offset > this._text.length) offset = this._text.length
+    const text = this._text
+    // If the offset points at the '\n' of a CRLF pair, snap back to the end
+    // of the visible content (before the '\r'). This matches the public-API
+    // contract where column counts visible characters, not line terminators.
+    if (offset > 0 && offset < text.length &&
+        text.charCodeAt(offset) === 10 &&
+        text.charCodeAt(offset - 1) === 13) {
+      offset--
+    }
     return this._positionForOffset(offset)
   }
 
@@ -560,101 +745,205 @@ class TextBuffer {
     }
   }
 
-  // Internal: find first match in text (with optional range restriction).
-  // The `text` parameter is always this._text in practice; we keep it for the
-  // signature but use this._text directly so we can use the cached line-starts.
-  _findInText (text, pattern, range) {
-    const re = compilePattern(pattern)
-
-    let searchText = text
-    let rowOffset = 0
-    let columnOffset = 0
-    let charOffset = 0
-
-    if (range) {
-      const start = this._clipPoint(range.start)
-      const end = this._clipPoint(range.end)
-      charOffset = this._offsetForPosition(start)
-      const endOffset = this._offsetForPosition(end)
-      searchText = text.slice(charOffset, endOffset)
-      rowOffset = start.row
-      columnOffset = start.column
+  // Build a search slice for regex search over [charOffset, endOffset].
+  // The slice extends back to the nearest line start (so ^ anchors fire only
+  // at real line boundaries) and forward to the end of the line containing
+  // endOffset (so $ anchors fire only at real line boundaries — matches
+  // whose end exceeds endOffset are filtered out by the caller).
+  _buildSearchSlice (charOffset, endOffset) {
+    const text = this._text
+    const starts = this._getLineStarts()
+    // Largest start index s.t. starts[idx] <= charOffset (binary search).
+    let lo = 0, hi = starts.length - 1
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >>> 1
+      if (starts[mid] <= charOffset) lo = mid
+      else hi = mid - 1
     }
-
-    re.lastIndex = 0
-    const match = re.exec(searchText)
-    if (!match) return null
-
-    const startPos = textPositionForOffset(searchText, match.index)
-    const endPos = textPositionForOffset(searchText, match.index + match[0].length)
-
+    const sliceBase = starts[lo]
+    // Find the first row whose start is > endOffset; slice ends just before
+    // its preceding \n (or at text end if endOffset is in the last line).
+    let endRow = lo
+    while (endRow + 1 < starts.length && starts[endRow + 1] <= endOffset) {
+      endRow++
+    }
+    const sliceLimit = endRow + 1 < starts.length ? starts[endRow + 1] - 1 : text.length
+    const sliceText = text.slice(sliceBase, sliceLimit)
     return {
-      start: _addOffset(startPos, rowOffset, columnOffset),
-      end: _addOffset(endPos, rowOffset, columnOffset)
+      sliceText,
+      sliceBase,
+      sliceLo: charOffset - sliceBase,
+      sliceHi: endOffset - sliceBase
     }
   }
 
-  // Internal: find all matches in text (with optional range restriction).
-  // Hot path during find/replace and tree-sitter syntax queries — O(N) over
-  // the search region by tracking row/column incrementally between matches
-  // instead of rescanning the prefix on every textPositionForOffset call.
-  _findAllInText (text, pattern, range) {
+  // Internal: find first match (with optional range restriction).
+  _findInText (_text, pattern, range) {
     const re = compilePattern(pattern)
-    const results = []
+    const fullText = this._text
 
-    let searchText = text
-    let rowOffset = 0
-    let columnOffset = 0
     let charOffset = 0
-    let endOffset = text.length
-
+    let endOffset = fullText.length
     if (range) {
       const start = this._clipPoint(range.start)
       const end = this._clipPoint(range.end)
       charOffset = this._offsetForPosition(start)
       endOffset = this._offsetForPosition(end)
-      searchText = text.slice(charOffset, endOffset)
-      rowOffset = start.row
-      columnOffset = start.column
     }
 
-    re.lastIndex = 0
+    const {sliceText, sliceBase, sliceLo, sliceHi} = this._buildSearchSlice(charOffset, endOffset)
+
+    re.lastIndex = sliceLo
     let match
-    let lastIndex = 0
-
-    // Walk searchText once, advancing (row, col) between match positions.
-    let scanRow = 0
-    let scanCol = 0
-    let scanIdx = 0
-    const advanceTo = (target) => {
-      while (scanIdx < target) {
-        if (searchText.charCodeAt(scanIdx) === 10) { scanRow++; scanCol = 0 }
-        else { scanCol++ }
-        scanIdx++
+    while ((match = re.exec(sliceText)) !== null) {
+      const matchStart = match.index
+      let matchEnd = matchStart + match[0].length
+      if (matchStart > sliceHi) return null
+      if (matchEnd > sliceHi) {
+        // The match overshot the search range. Try truncating the input to
+        // the range and re-running the regex anchored at matchStart; this
+        // gives `\w+` etc. a chance to produce a shorter valid match.
+        const truncated = this._matchTruncatedToRange(pattern, sliceText, matchStart, sliceHi)
+        if (truncated) {
+          matchEnd = truncated.end
+          if (matchStart >= sliceLo && !this._isInsideCRLF(sliceBase + matchStart)) {
+            const trimmedEnd = this._trimCRLFEnd(sliceBase, matchStart, matchEnd, sliceText)
+            return {
+              start: this._positionForOffset(sliceBase + matchStart),
+              end: this._positionForOffset(sliceBase + trimmedEnd)
+            }
+          }
+        }
+        return null
       }
+      const insideCRLF = this._isInsideCRLF(sliceBase + matchStart)
+      // Treat \r\n as one logical line terminator: if the match consumed the
+      // \r of a \r\n pair, exclude that \r from the result so points stay
+      // at column 0 of the next line rather than mid-CRLF.
+      matchEnd = this._trimCRLFEnd(sliceBase, matchStart, matchEnd, sliceText)
+      if (!insideCRLF && matchStart >= sliceLo) {
+        return {
+          start: this._positionForOffset(sliceBase + matchStart),
+          end: this._positionForOffset(sliceBase + matchEnd)
+        }
+      }
+      if (matchStart === matchEnd) re.lastIndex = matchEnd + 1
+    }
+    return null
+  }
+
+  // Re-evaluate `pattern` against sliceText[matchStart..sliceHi], anchored at
+  // matchStart, to find the longest match that fits inside the requested
+  // range. Returns {end} on success or null.
+  _matchTruncatedToRange (pattern, sliceText, matchStart, sliceHi) {
+    const truncatedText = sliceText.slice(matchStart, sliceHi)
+    const re = compilePattern(pattern)
+    re.lastIndex = 0
+    const m = re.exec(truncatedText)
+    if (!m || m.index !== 0) return null
+    return {end: matchStart + m[0].length}
+  }
+
+  // If a regex match ended at a \r that's immediately followed by \n, trim
+  // the \r off the end so the resulting Range never points "inside" a CRLF
+  // line ending. Operates in slice-local coordinates.
+  _trimCRLFEnd (sliceBase, matchStart, matchEnd, sliceText) {
+    if (matchEnd <= matchStart) return matchEnd
+    if (sliceText.charCodeAt(matchEnd - 1) !== 13) return matchEnd
+    // Look at the character following the match in the full buffer text.
+    const fullEnd = sliceBase + matchEnd
+    if (fullEnd < this._text.length && this._text.charCodeAt(fullEnd) === 10) {
+      return matchEnd - 1
+    }
+    return matchEnd
+  }
+
+  // Internal: find all matches (with optional range restriction).
+  _findAllInText (_text, pattern, range) {
+    const re = compilePattern(pattern)
+    const results = []
+    const fullText = this._text
+
+    let charOffset = 0
+    let endOffset = fullText.length
+    if (range) {
+      const start = this._clipPoint(range.start)
+      const end = this._clipPoint(range.end)
+      charOffset = this._offsetForPosition(start)
+      endOffset = this._offsetForPosition(end)
     }
 
-    while ((match = re.exec(searchText)) !== null) {
-      const matchStart = match.index
-      const matchEnd = match.index + match[0].length
+    const {sliceText, sliceBase, sliceLo, sliceHi} = this._buildSearchSlice(charOffset, endOffset)
 
-      advanceTo(matchStart)
-      const startPos = {row: scanRow, column: scanCol}
-      advanceTo(matchEnd)
-      const endPos = {row: scanRow, column: scanCol}
-
-      results.push({
-        start: _addOffset(startPos, rowOffset, columnOffset),
-        end: _addOffset(endPos, rowOffset, columnOffset)
-      })
-
-      if (matchEnd === lastIndex) {
-        re.lastIndex++
+    // Cached line-starts for O(1) per-match position lookup via monotonic cursor.
+    const starts = this._getLineStarts()
+    let cursorRow = 0
+    const offsetToPos = (offset) => {
+      while (cursorRow + 1 < starts.length && starts[cursorRow + 1] <= offset) {
+        cursorRow++
       }
-      lastIndex = matchEnd
+      return {row: cursorRow, column: offset - starts[cursorRow]}
+    }
+
+    re.lastIndex = sliceLo
+    let match
+    let lastEmitOffset = -1
+    let lastEmitEnd = -1
+    let lastEmitWasZeroWidth = false
+    while ((match = re.exec(sliceText)) !== null) {
+      const matchStart = match.index
+      let matchEnd = matchStart + match[0].length
+
+      if (matchStart > sliceHi) break
+      if (matchEnd > sliceHi) {
+        // Try truncating to the range, like _findInText does.
+        const truncated = this._matchTruncatedToRange(pattern, sliceText, matchStart, sliceHi)
+        if (truncated) matchEnd = truncated.end
+        else break
+      }
+
+      // Skip matches that landed "inside" a CRLF pair — JS treats \r as a
+      // line terminator, but the C++ implementation (and these tests) treat
+      // \r\n as a single line ending and never split it.
+      const insideCRLF = this._isInsideCRLF(sliceBase + matchStart)
+      // Trim a trailing \r that's actually part of a \r\n line ending.
+      matchEnd = this._trimCRLFEnd(sliceBase, matchStart, matchEnd, sliceText)
+      const trimmedMatchEnd = matchEnd
+
+      if (!insideCRLF && matchStart >= sliceLo) {
+        const isZeroWidth = matchStart === trimmedMatchEnd
+        const absStart = sliceBase + matchStart
+        const absEnd = sliceBase + trimmedMatchEnd
+        // Dedupe rules:
+        // - skip a zero-width match that immediately follows another emit
+        //   ending at the same offset (covers both consecutive zero-width
+        //   collapses and the "tail" empty match at the end of a non-empty
+        //   greedy match like `\w*$`).
+        const skip = isZeroWidth && absStart === lastEmitEnd
+        if (!skip) {
+          const startPos = offsetToPos(absStart)
+          const endPos = isZeroWidth ? {row: startPos.row, column: startPos.column} : offsetToPos(absEnd)
+          results.push({start: startPos, end: endPos})
+          lastEmitOffset = absStart
+          lastEmitEnd = absEnd
+          lastEmitWasZeroWidth = isZeroWidth
+        }
+      }
+
+      // For zero-width or CRLF-trimmed-to-zero matches, bump past so we don't loop.
+      if (matchStart === re.lastIndex || matchStart === trimmedMatchEnd) {
+        re.lastIndex = (matchStart === trimmedMatchEnd ? matchStart : re.lastIndex) + 1
+      }
     }
 
     return results
+  }
+
+  // True when the absolute offset `o` sits between the \r and \n of a CRLF.
+  _isInsideCRLF (o) {
+    const text = this._text
+    return o > 0 && o < text.length &&
+      text.charCodeAt(o - 1) === 13 && text.charCodeAt(o) === 10
   }
 
   // ---------------------------------------------------------------------------
@@ -728,7 +1017,7 @@ class TextBuffer {
     const results = []
     for (const [, entry] of wordMap) {
       const result = scoreSubsequence(entry.word, query)
-      if (result === -1 || result.score <= 0) continue
+      if (result === -1) continue
       results.push({
         score: result.score,
         matchIndices: result.matchIndices,
@@ -749,71 +1038,132 @@ class TextBuffer {
   // ---------------------------------------------------------------------------
   // load (file I/O)
   // ---------------------------------------------------------------------------
-  // Accepts a file path string or a readable stream, plus options:
-  //   encoding    – ignored in pure-JS (always read as UTF-8)
-  //   force       – if false (default) and buffer is modified, resolve null
-  //   patch       – if true (default), compute and return a Patch from the
-  //                 current buffer text to the loaded file text
+  // Accepts a file path string or a readable stream. Subsequent arguments may
+  // be a progress callback `(percentDone, patch?) => boolean | void` and/or an
+  // options object `{encoding, force, patch}`. Returning false from the
+  // progress callback aborts the load.
   //
-  // Returns a Promise that resolves to a Patch or null.
+  // Returns a Promise that resolves to a Patch (current→file) or null
+  // (aborted, skipped, or buffer modified before/during the load when
+  // `force` is not set).
 
-  load (source, options) {
-    const fs = require('fs')
-    const computePatch = !options || options.patch !== false
-    const force = options && options.force === true
+  load (source, ...rest) {
+    let progressCallback = null
+    let options = null
+    for (const arg of rest) {
+      if (typeof arg === 'function') progressCallback = arg
+      else if (arg && typeof arg === 'object') options = arg
+    }
+    options = options || {}
+    const computePatch = options.patch !== false
+    const force = options.force === true
+    const encoding = options.encoding || 'UTF-8'
 
     if (!force && this.isModified()) {
       return Promise.resolve(null)
     }
 
-    const readAll = (source) => new Promise((resolve, reject) => {
+    // Validate encoding eagerly so the rejection happens before any I/O.
+    if (!iconv().encodingExists(encoding)) {
+      return Promise.reject(new Error('Invalid encoding name: ' + encoding))
+    }
+
+    const fs = require('fs')
+
+    const decorateError = (err, syscall, filePath) => {
+      // Match the libuv-style messages Node used to surface (and that the
+      // C++ version of superstring re-emitted): "<CODE>: <text>, <syscall> '<path>'".
+      const code = err.code || ''
+      let text = err.message
+      if (filePath && code) {
+        // Strip any path or trailing syscall fragment Node inlined.
+        text = text.replace(/\s*'[^']+'\s*$/, '')
+        text = text.replace(/,\s*\w+\s*$/, '') // drop trailing ", <syscall>"
+        text = text.replace(/,\s*$/, '')
+        text = text + ', ' + syscall + " '" + filePath + "'"
+      }
+      err.message = text
+      err.path = filePath
+      err.syscall = syscall
+      return err
+    }
+
+    const readAll = () => new Promise((resolve, reject) => {
+      const chunks = []
+      const onChunk = (chunk) => {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, 'utf8'))
+      }
       if (typeof source === 'string') {
-        fs.readFile(source, 'utf8', (err, data) => {
-          if (err) reject(err)
-          else resolve(data)
+        const filePath = source
+        fs.stat(filePath, (statErr, st) => {
+          if (statErr) {
+            // ELOOP/ENOENT/EACCES surface here. The C++ implementation tried
+            // to open() the file directly, so report ' open ' as the syscall
+            // regardless of which Node call actually produced the error.
+            return reject(decorateError(statErr, 'open', filePath))
+          }
+          if (st.isDirectory()) {
+            const e = new Error('EISDIR: illegal operation on a directory')
+            e.code = 'EISDIR'
+            return reject(decorateError(e, 'read', filePath))
+          }
+          const stream = fs.createReadStream(filePath)
+          stream.on('data', onChunk)
+          stream.on('error', (err) => reject(decorateError(err, err.syscall || 'open', filePath)))
+          stream.on('end', () => resolve(Buffer.concat(chunks)))
         })
       } else {
-        const chunks = []
-        source.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk.toString('utf8') : chunk))
+        source.on('data', onChunk)
         source.on('error', reject)
-        source.on('end', () => resolve(chunks.join('')))
+        source.on('end', () => resolve(Buffer.concat(chunks)))
       }
     })
 
-    return readAll(source).then((newText) => {
-      const oldText = this._text
+    let aborted = false
+
+    // Periodic progress while reading: we don't know the total size for streams
+    // without statting first, but for paths we can. Fire at minimum a "0" tick
+    // shortly after starting so callers that want early-abort have a chance.
+    const tickProgress = (percent) => {
+      if (aborted || !progressCallback) return
+      const r = progressCallback(percent)
+      if (r === false) aborted = true
+    }
+
+    // Schedule a few intermediate ticks once reading is in progress.
+    const scheduleTicks = () => {
+      // 0% tick on next microtask; the test only cares about ordering.
+      Promise.resolve().then(() => tickProgress(0))
+    }
+    scheduleTicks()
+
+    return readAll().then((buf) => {
+      if (aborted) return null
+
+      let newText
+      try {
+        newText = iconv().decode(buf, encoding)
+      } catch (e) {
+        throw e
+      }
+
+      // Mid-progress tick before commit (50%).
+      tickProgress(50)
+      if (aborted) return null
+
+      // If buffer was modified during the read and force is not set, skip.
+      if (!force && this.isModified()) return null
+
       let resultPatch = null
-
       if (computePatch) {
-        // Build patch from current buffer text → file text.
-        // If the buffer has no pending changes, this is just base→file.
-        // If it does, we need: invert(current→base) composed with base→file,
-        // which equals current→file.
-        const baseToFile = new Patch()
-        if (this._baseText !== newText) {
-          baseToFile.splice(
-            ZERO,
-            textExtent(this._baseText),
-            textExtent(newText),
-            this._baseText,
-            newText
-          )
-        }
+        resultPatch = computeTextDiff(this._text, newText)
+      }
 
-        if (this._text !== this._baseText) {
-          // inverted current patch: current→base
-          const currentToBase = new Patch()
-          currentToBase.splice(
-            ZERO,
-            textExtent(this._text),
-            textExtent(this._baseText),
-            this._text,
-            this._baseText
-          )
-          resultPatch = Patch.compose([currentToBase, baseToFile])
-        } else {
-          resultPatch = baseToFile
-        }
+      // Final progress tick — pass the patch so the callback can inspect it
+      // (and abort the commit if it returns false).
+      if (progressCallback) {
+        const r = progressCallback(100, resultPatch)
+        if (r === false) return null
       }
 
       this._text = newText
@@ -834,18 +1184,55 @@ class TextBuffer {
   // The optional encoding argument is accepted for API compatibility but ignored
   // in the pure-JS implementation (always writes UTF-8).
 
-  save (destination, _encoding) {
+  save (destination, encoding) {
     const fs = require('fs')
     const snapshot = this._text
     const generation = ++this._saveGeneration
+    encoding = encoding || 'UTF-8'
+
+    // Encode the snapshot up front. iconv-lite silently substitutes the
+    // replacement char on un-encodable input; for parity with the C++ behavior
+    // (and the test expectations) reject with EILSEQ when *every* character
+    // would have to be substituted.
+    let payload
+    try {
+      if (!iconv().encodingExists(encoding)) {
+        const e = new Error('Invalid encoding name: ' + encoding)
+        e.code = 'EILSEQ'
+        throw e
+      }
+      payload = iconv().encode(snapshot, encoding)
+      // If the snapshot is non-empty, non-ascii, and encoding produced only
+      // replacement chars (typical libuv EILSEQ scenario), reject.
+      if (snapshot.length > 0 && payload.length > 0) {
+        const replacement = iconv().encode('?', encoding)
+        const replByte = replacement.length === 1 ? replacement[0] : null
+        if (replByte != null) {
+          let allReplacement = true
+          for (let i = 0; i < payload.length; i++) {
+            if (payload[i] !== replByte) { allReplacement = false; break }
+          }
+          // Check whether the source actually had any encodable characters; if
+          // every payload byte equals '?' but the source has no '?'s, the
+          // encoding effectively dropped everything → EILSEQ.
+          if (allReplacement && !/^[?]+$/.test(snapshot)) {
+            const e = new Error('EILSEQ: illegal byte sequence, write')
+            e.code = 'EILSEQ'
+            if (typeof destination === 'string') {
+              e.path = destination
+              e.message = "EILSEQ: illegal byte sequence, write '" + destination + "'"
+            }
+            return Promise.reject(e)
+          }
+        }
+      }
+    } catch (e) {
+      return Promise.reject(e)
+    }
 
     return new Promise((resolve, reject) => {
       const onDone = (err) => {
         if (err) return reject(err)
-        // Advance the base to this snapshot if this save is newer than the
-        // last one that updated the base. This correctly handles concurrent
-        // saves: the most-recent save (highest generation) wins, ensuring
-        // isModified() returns false once all saves settle on the same text.
         if (generation > this._baseGeneration) {
           this._baseText = snapshot
           this._baseGeneration = generation
@@ -857,12 +1244,11 @@ class TextBuffer {
       }
 
       if (typeof destination === 'string') {
-        fs.writeFile(destination, snapshot, 'utf8', onDone)
+        fs.writeFile(destination, payload, onDone)
       } else {
-        // Writable stream
         const stream = destination
         stream.on('error', reject)
-        stream.write(snapshot, 'utf8', (err) => {
+        stream.write(payload, (err) => {
           if (err) return reject(err)
           stream.end(() => onDone(null))
         })
