@@ -144,6 +144,52 @@ class TextBuffer {
     this._lineStarts = null
   }
 
+  // O(log lines) position lookup against this._text using the cached line-start index.
+  // Equivalent to textPositionForOffset(this._text, offset) but without scanning.
+  _positionForOffset (offset) {
+    if (offset <= 0) return {row: 0, column: 0}
+    const text = this._text
+    if (offset > text.length) offset = text.length
+    const starts = this._getLineStarts()
+    let lo = 0
+    let hi = starts.length - 1
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >>> 1
+      if (starts[mid] <= offset) lo = mid
+      else hi = mid - 1
+    }
+    return {row: lo, column: offset - starts[lo]}
+  }
+
+  // Equivalent to textOffsetForPoint(this._text, point), in O(1).
+  // Original semantics: walk the text counting columns per line; if the requested
+  // point is reached, return that offset, otherwise fall through to text.length
+  // ("unreachable point" fallback). \r is counted as a regular column character.
+  _offsetForPosition (point) {
+    const text = this._text
+    const starts = this._getLineStarts()
+    let row = point.row
+    let column = point.column
+    if (row < 0) { row = 0; column = 0 }
+    if (column < 0) column = 0
+    if (row >= starts.length) return text.length
+    const lineStart = starts[row]
+    const hasNextLine = row + 1 < starts.length
+    // For non-last rows, the line content (including any trailing \r) ends just
+    // before the '\n' at starts[row+1] - 1. A column larger than that content
+    // length is "unreachable" → fall through to text.length, matching the
+    // original walking implementation.
+    if (hasNextLine) {
+      const lineLen = starts[row + 1] - 1 - lineStart
+      if (column > lineLen) return text.length
+      return lineStart + column
+    }
+    // Last row: clamp to text.length.
+    const lineLen = text.length - lineStart
+    if (column > lineLen) column = lineLen
+    return lineStart + column
+  }
+
   // ---------------------------------------------------------------------------
   // Basic text access
   // ---------------------------------------------------------------------------
@@ -177,8 +223,8 @@ class TextBuffer {
     const newExtent = textExtent(newText)
 
     // Build new full text
-    const offset1 = textOffsetForPoint(this._text, s)
-    const offset2 = textOffsetForPoint(this._text, e)
+    const offset1 = this._offsetForPosition(s)
+    const offset2 = this._offsetForPosition(e)
     this._text = this._text.slice(0, offset1) + newText + this._text.slice(offset2)
     this._invalidateLineStarts()
 
@@ -195,8 +241,8 @@ class TextBuffer {
   }
 
   _getTextInRange (start, end) {
-    const offset1 = textOffsetForPoint(this._text, start)
-    const offset2 = textOffsetForPoint(this._text, end)
+    const offset1 = this._offsetForPosition(start)
+    const offset2 = this._offsetForPosition(end)
     return this._text.slice(offset1, offset2)
   }
 
@@ -330,13 +376,13 @@ class TextBuffer {
 
   characterIndexForPosition (point) {
     const clipped = this._clipPoint(point)
-    return textOffsetForPoint(this._text, clipped)
+    return this._offsetForPosition(clipped)
   }
 
   positionForCharacterIndex (offset) {
     if (offset < 0) offset = 0
     if (offset > this._text.length) offset = this._text.length
-    return textPositionForOffset(this._text, offset)
+    return this._positionForOffset(offset)
   }
 
   // ---------------------------------------------------------------------------
@@ -435,8 +481,8 @@ class TextBuffer {
       const s = change.oldStart
       const e = change.oldEnd
       const newText = change.newText || ''
-      const offset1 = textOffsetForPoint(this._text, s)
-      const offset2 = textOffsetForPoint(this._text, e)
+      const offset1 = this._offsetForPosition(s)
+      const offset2 = this._offsetForPosition(e)
       this._text = this._text.slice(0, offset1) + newText + this._text.slice(offset2)
       this._invalidateLineStarts()
     }
@@ -633,8 +679,8 @@ class TextBuffer {
 
     const start = this._clipPoint(range.start)
     const end = this._clipPoint(range.end)
-    const charStart = textOffsetForPoint(this._text, start)
-    const charEnd = textOffsetForPoint(this._text, end)
+    const charStart = this._offsetForPosition(start)
+    const charEnd = this._offsetForPosition(end)
     const text = this._text.slice(charStart, charEnd)
 
     // Tokenize: split by word boundaries
@@ -650,7 +696,7 @@ class TextBuffer {
       const word = match[0]
       if (word.length > MAX_WORD_LENGTH) continue
       const offset = charStart + match.index
-      const pos = textPositionForOffset(this._text, offset)
+      const pos = this._positionForOffset(offset)
       const key = word.toLowerCase()
       if (!wordMap.has(key)) {
         wordMap.set(key, {word, positions: [pos]})
