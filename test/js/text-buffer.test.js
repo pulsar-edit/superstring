@@ -85,334 +85,334 @@ if (process.platform === 'win32') {
 }
 
 describe('TextBuffer', () => {
-  // describe('.load', () => {
-  //   if (!TextBuffer.prototype.load) return;
-  //
-  //   it('can load from a file at a given path', () => {
-  //     const buffer = new TextBuffer()
-  //
-  //     const {path: filePath} = temp.openSync()
-  //     const content = 'a\nb\nc\n'.repeat(10 * 1024)
-  //     fs.writeFileSync(filePath, content)
-  //
-  //     const percentages = []
-  //     return buffer.load(filePath, (percentDone) => {
-  //       return percentages.push(percentDone);
-  //     })
-  //       .then(() => {
-  //         assert.equal(buffer.getText(), content)
-  //         assert.deepEqual(percentages, percentages.map(Number).sort((a, b) => a - b))
-  //         assert(percentages[0] >= 0)
-  //         assert(percentages[percentages.length - 1] == 100)
-  //       })
-  //   })
-  //
-  //   it('can load from a given stream', () => {
-  //     const buffer = new TextBuffer()
-  //
-  //     const {path: filePath} = temp.openSync()
-  //     const fileContent = 'abc def ghi jkl\n'.repeat(10 * 1024)
-  //     fs.writeFileSync(filePath, fileContent)
-  //
-  //     const percentages = []
-  //     const stream = fs.createReadStream(filePath)
-  //     return buffer.load(stream, (percentage) => percentages.push(percentage))
-  //       .then(() => {
-  //         assert.equal(buffer.getText(), fileContent)
-  //         assert.deepEqual(percentages, percentages.map(Number).sort((a, b) => a - b))
-  //         assert(percentages[percentages.length - 1] == 100)
-  //       })
-  //   })
-  //
-  //   it('can load from a given stream with an encoding already set', () => {
-  //     const buffer = new TextBuffer()
-  //
-  //     const {path: filePath} = temp.openSync()
-  //     const fileContent = 'abc def ghi jkl\n'.repeat(1024)
-  //     fs.writeFileSync(filePath, fileContent)
-  //
-  //     const stream = fs.createReadStream(filePath, 'utf8')
-  //     return buffer.load(stream).then(() => {
-  //       assert.equal(buffer.getText(), fileContent)
-  //     })
-  //   })
-  //
-  //   it('resolves with a Patch representing the difference between the old and new text', () => {
-  //     const buffer = new TextBuffer('cat\ndog\nelephant\nfox')
-  //     const {path: filePath} = temp.openSync()
-  //     fs.writeFileSync(filePath, 'bug\ncat\ndog\nelephant\nfox\ngoat')
-  //
-  //     let progressCallbackPatch
-  //     return buffer.load(filePath, (percentDone, patch) => {
-  //       progressCallbackPatch = patch
-  //     }).then(patch => {
-  //
-  //       // The patch is also passed to the progress callback on the final call.
-  //       assert.equal(progressCallbackPatch, patch)
-  //
-  //       assert.deepEqual(toPlainObject(patch.getChanges()), [
-  //         {
-  //           oldStart: {row: 0, column: 0}, oldEnd: {row: 0, column: 0},
-  //           newStart: {row: 0, column: 0}, newEnd: {row: 1, column: 0},
-  //           oldText: '',
-  //           newText: 'bug\n'
-  //         },
-  //         {
-  //           oldStart: {row: 3, column: 3}, oldEnd: {row: 3, column: 3},
-  //           newStart: {row: 4, column: 3}, newEnd: {row: 5, column: 4},
-  //           oldText: '',
-  //           newText: '\ngoat'
-  //         }
-  //       ])
-  //     })
-  //   })
-  //
-  //   it('resolves with an empty patch when the contents of the file have not changed', () => {
-  //     const buffer = new TextBuffer('cat\ndog\nelephant\nfox')
-  //     const {path: filePath} = temp.openSync()
-  //     fs.writeFileSync(filePath, 'cat\ndog\nelephant\nfox')
-  //
-  //     return buffer.load(filePath).then(patch => {
-  //       assert.deepEqual(patch.getChanges(), [])
-  //       assert.equal(buffer.getText(), 'cat\ndog\nelephant\nfox')
-  //     })
-  //   })
-  //
-  //   it('can load a file in a non-UTF8 encoding', () => {
-  //     const buffer = new TextBuffer()
-  //
-  //     const {path: filePath} = temp.openSync()
-  //     const content = 'a\nb\nc\n'.repeat(10)
-  //     fs.writeFileSync(filePath, content, 'utf16le')
-  //
-  //     return buffer.load(filePath, {encoding: 'UTF-16LE'}).then(() =>
-  //       assert.equal(buffer.getText(), content)
-  //     )
-  //   })
-  //
-  //   it('rejects its promise if an invalid encoding is given', () => {
-  //     const buffer = new TextBuffer()
-  //
-  //     const {path: filePath} = temp.openSync()
-  //     const content = 'a\nb\nc\n'.repeat(10)
-  //     fs.writeFileSync(filePath, content, 'utf16le')
-  //
-  //     let rejection = null
-  //     return buffer.load(filePath, {encoding: 'GARBAGE16'})
-  //       .catch(error => rejection = error)
-  //       .then(() => assert.equal(rejection.message, 'Invalid encoding name: GARBAGE16'))
-  //   })
-  //
-  //   it('aborts if the buffer is modified before the load', () => {
-  //     const buffer = new TextBuffer('abc')
-  //     const {path: filePath} = temp.openSync()
-  //     fs.writeFileSync(filePath, 'def')
-  //
-  //     buffer.setText('ghi')
-  //
-  //     return buffer.load(filePath).then(result => {
-  //       assert.equal(result, null)
-  //       assert.equal(buffer.getText(), 'ghi')
-  //       assert.ok(buffer.isModified())
-  //     })
-  //   })
-  //
-  //   it('aborts if the buffer is modified during the load', () => {
-  //     const buffer = new TextBuffer('abc')
-  //     const {path: filePath} = temp.openSync()
-  //     fs.writeFileSync(filePath, 'def')
-  //
-  //     const loadPromise = buffer.load(filePath).then(result => {
-  //       assert.equal(result, null)
-  //       assert.equal(buffer.getText(), 'ghi')
-  //       assert.ok(buffer.isModified())
-  //     })
-  //
-  //     buffer.setText('ghi')
-  //     return loadPromise
-  //   })
-  //
-  //   it('aborts if the progress callback returns false during the load', () => {
-  //     const buffer = new TextBuffer('abc')
-  //     const filePath = temp.openSync().path
-  //     fs.writeFileSync(filePath, '123456789\n'.repeat(100))
-  //
-  //     let progressCount = 0
-  //     function progressCallback() {
-  //       progressCount++
-  //       return false
-  //     }
-  //
-  //     return buffer.load(filePath, progressCallback).then((patch) => {
-  //       assert.notOk(patch)
-  //       assert.equal(progressCount, 1)
-  //       assert.equal(buffer.getText(), 'abc')
-  //       assert.notOk(buffer.isModified())
-  //     })
-  //   })
-  //
-  //   it('aborts if the final progress callback returns false', () => {
-  //     const buffer = new TextBuffer('abc')
-  //     const filePath = temp.openSync().path
-  //
-  //     function progressCallback(percentDone, patch) {
-  //       if (patch) return false
-  //     }
-  //
-  //     return buffer.load(filePath, progressCallback).then((patch) => {
-  //       assert.notOk(patch)
-  //       assert.equal(buffer.getText(), 'abc')
-  //       assert.notOk(buffer.isModified())
-  //     })
-  //   })
-  //
-  //   it('can handle a variety of encodings', () => {
-  //     const filePath = temp.openSync().path
-  //     fs.writeFileSync(filePath, 'abc', 'ascii')
-  //
-  //     return Promise.all(encodings.map((encoding) =>
-  //       new TextBuffer().load(filePath, {encoding})
-  //     ))
-  //   })
-  //
-  //   it('handles paths containing non-ascii characters', () => {
-  //     const directory = temp.mkdirSync()
-  //     const filePath = path.join(directory, 'русский.txt')
-  //     fs.writeFileSync(filePath, 'Hello')
-  //     const buffer = new TextBuffer()
-  //     return buffer.load(filePath).then(() => {
-  //       assert.equal(buffer.getText(), 'Hello')
-  //
-  //       buffer.setTextInRange(Range(Point(0, 5), Point(0, 5)), '!')
-  //       return buffer.save(filePath).then(() => {
-  //         assert.equal(fs.readFileSync(filePath), 'Hello!')
-  //       })
-  //     })
-  //   })
-  //
-  //   describe('when the `force` option is set to true', () => {
-  //     it('discards any modifications and incorporates that change into the resolved patch', () => {
-  //       const buffer = new TextBuffer('abcdef')
-  //       const {path: filePath} = temp.openSync()
-  //       fs.writeFileSync(filePath, '  abcdef')
-  //
-  //       buffer.setTextInRange(Range(Point(0, 3), Point(0, 3)), ' ')
-  //       assert.equal(buffer.getText(), 'abc def')
-  //       assert.ok(buffer.isModified())
-  //
-  //       const loadPromise = buffer.load(filePath, {force: true}).then(patch => {
-  //         assert.equal(buffer.getText(), '  abcdef')
-  //         assert.notOk(buffer.isModified())
-  //         assert.deepEqual(toPlainObject(patch.getChanges()), [
-  //           {
-  //             oldStart: {row: 0, column: 0}, oldEnd: {row: 0, column: 0},
-  //             newStart: {row: 0, column: 0}, newEnd: {row: 0, column: 2},
-  //             oldText: '',
-  //             newText: '  '
-  //           },
-  //           {
-  //             oldStart: {row: 0, column: 3}, oldEnd: {row: 0, column: 4},
-  //             newStart: {row: 0, column: 5}, newEnd: {row: 0, column: 5},
-  //             oldText: ' ',
-  //             newText: ''
-  //           },
-  //           {
-  //             oldStart: {row: 0, column: 7}, oldEnd: {row: 0, column: 8},
-  //             newStart: {row: 0, column: 8}, newEnd: {row: 0, column: 8},
-  //             oldText: ' ',
-  //             newText: ''
-  //           }
-  //         ])
-  //       })
-  //
-  //       buffer.setTextInRange(Range(Point(0, 7), Point(0, 7)), ' ')
-  //       assert.equal(buffer.getText(), 'abc def ')
-  //       assert.ok(buffer.isModified())
-  //
-  //       return loadPromise
-  //     })
-  //
-  //     it('marks the buffer as unmodified even if the reload does not change the text', () => {
-  //       const buffer = new TextBuffer('abcdef')
-  //
-  //       const {path: filePath} = temp.openSync()
-  //       const fileContent = '  abcdef'
-  //       fs.writeFileSync(filePath, fileContent)
-  //
-  //       buffer.setTextInRange(Range(Point(0, 0), Point(0, 0)), '  ')
-  //       assert.ok(buffer.isModified())
-  //       assert.equal(buffer.getText(), fileContent)
-  //
-  //       return buffer.load(filePath, {force: true}).then(patch => {
-  //         assert.equal(patch.getChanges(), 0)
-  //         assert.equal(buffer.getText(), '  abcdef')
-  //         assert.notOk(buffer.isModified())
-  //       })
-  //     })
-  //   })
-  //
-  //   describe('when the `patch` option is set to false', () => {
-  //     it('does not compute a Patch representing the changes', () => {
-  //       const buffer = new TextBuffer()
-  //
-  //       const filePath = temp.openSync().path
-  //       fs.writeFileSync(filePath, 'abc')
-  //
-  //       return buffer.load(filePath, {patch: false}).then((patch) => {
-  //         assert.equal(patch, null)
-  //         assert.equal(buffer.getText(), 'abc')
-  //
-  //         buffer.setTextInRange(Range(Point(0, 0), Point(0, 0)), '  ')
-  //         return buffer.load(filePath, {patch: false, force: true}).then((patch) => {
-  //           assert.equal(patch, null)
-  //           assert.equal(buffer.getText(), 'abc')
-  //         })
-  //       })
-  //     })
-  //   })
-  //
-  //   describe('error handling', () => {
-  //     it('rejects with an error if the path points to a directory', (done) => {
-  //       const buffer = new TextBuffer()
-  //       const filePath = temp.mkdirSync()
-  //
-  //       return buffer.load(filePath)
-  //         .then(() => {
-  //           done(new Error('Expected an error'))
-  //         })
-  //         .catch((error) => {
-  //           if (!isWindows) {
-  //             assert.include(error.message, ' read ')
-  //             assert.equal(error.code, 'EISDIR')
-  //           }
-  //           assert.equal(error.path, filePath)
-  //           done()
-  //         })
-  //     })
-  //
-  //     it('rejects with an error if the path is a circular symlink', (done) => {
-  //       const tempDir = temp.mkdirSync()
-  //       const filePath = path.join(tempDir, 'one')
-  //       const otherPath = path.join(tempDir, 'two')
-  //       fs.symlinkSync(filePath, otherPath)
-  //       fs.symlinkSync(otherPath, filePath)
-  //
-  //       const buffer = new TextBuffer()
-  //       return buffer.load(filePath)
-  //         .then(() => {
-  //           done(new Error('Expected an error'))
-  //         })
-  //         .catch((error) => {
-  //           if (!isWindows) {
-  //             assert.include(error.message, ' open ')
-  //             assert.equal(error.code, 'ELOOP')
-  //           }
-  //           assert.equal(error.path, filePath)
-  //           done()
-  //         })
-  //     })
-  //   })
-  // })
+  describe('.load', () => {
+    if (!TextBuffer.prototype.load) return;
+
+    it('can load from a file at a given path', () => {
+      const buffer = new TextBuffer()
+
+      const {path: filePath} = temp.openSync()
+      const content = 'a\nb\nc\n'.repeat(10 * 1024)
+      fs.writeFileSync(filePath, content)
+
+      const percentages = []
+      return buffer.load(filePath, (percentDone) => {
+        return percentages.push(percentDone);
+      })
+        .then(() => {
+          assert.equal(buffer.getText(), content)
+          assert.deepEqual(percentages, percentages.map(Number).sort((a, b) => a - b))
+          assert(percentages[0] >= 0)
+          assert(percentages[percentages.length - 1] == 100)
+        })
+    })
+
+    it('can load from a given stream', () => {
+      const buffer = new TextBuffer()
+
+      const {path: filePath} = temp.openSync()
+      const fileContent = 'abc def ghi jkl\n'.repeat(10 * 1024)
+      fs.writeFileSync(filePath, fileContent)
+
+      const percentages = []
+      const stream = fs.createReadStream(filePath)
+      return buffer.load(stream, (percentage) => percentages.push(percentage))
+        .then(() => {
+          assert.equal(buffer.getText(), fileContent)
+          assert.deepEqual(percentages, percentages.map(Number).sort((a, b) => a - b))
+          assert(percentages[percentages.length - 1] == 100)
+        })
+    })
+
+    it('can load from a given stream with an encoding already set', () => {
+      const buffer = new TextBuffer()
+
+      const {path: filePath} = temp.openSync()
+      const fileContent = 'abc def ghi jkl\n'.repeat(1024)
+      fs.writeFileSync(filePath, fileContent)
+
+      const stream = fs.createReadStream(filePath, 'utf8')
+      return buffer.load(stream).then(() => {
+        assert.equal(buffer.getText(), fileContent)
+      })
+    })
+
+    it('resolves with a Patch representing the difference between the old and new text', () => {
+      const buffer = new TextBuffer('cat\ndog\nelephant\nfox')
+      const {path: filePath} = temp.openSync()
+      fs.writeFileSync(filePath, 'bug\ncat\ndog\nelephant\nfox\ngoat')
+
+      let progressCallbackPatch
+      return buffer.load(filePath, (percentDone, patch) => {
+        progressCallbackPatch = patch
+      }).then(patch => {
+
+        // The patch is also passed to the progress callback on the final call.
+        assert.equal(progressCallbackPatch, patch)
+
+        assert.deepEqual(toPlainObject(patch.getChanges()), [
+          {
+            oldStart: {row: 0, column: 0}, oldEnd: {row: 0, column: 0},
+            newStart: {row: 0, column: 0}, newEnd: {row: 1, column: 0},
+            oldText: '',
+            newText: 'bug\n'
+          },
+          {
+            oldStart: {row: 3, column: 3}, oldEnd: {row: 3, column: 3},
+            newStart: {row: 4, column: 3}, newEnd: {row: 5, column: 4},
+            oldText: '',
+            newText: '\ngoat'
+          }
+        ])
+      })
+    })
+
+    it('resolves with an empty patch when the contents of the file have not changed', () => {
+      const buffer = new TextBuffer('cat\ndog\nelephant\nfox')
+      const {path: filePath} = temp.openSync()
+      fs.writeFileSync(filePath, 'cat\ndog\nelephant\nfox')
+
+      return buffer.load(filePath).then(patch => {
+        assert.deepEqual(patch.getChanges(), [])
+        assert.equal(buffer.getText(), 'cat\ndog\nelephant\nfox')
+      })
+    })
+
+    it('can load a file in a non-UTF8 encoding', () => {
+      const buffer = new TextBuffer()
+
+      const {path: filePath} = temp.openSync()
+      const content = 'a\nb\nc\n'.repeat(10)
+      fs.writeFileSync(filePath, content, 'utf16le')
+
+      return buffer.load(filePath, {encoding: 'UTF-16LE'}).then(() =>
+        assert.equal(buffer.getText(), content)
+      )
+    })
+
+    it('rejects its promise if an invalid encoding is given', () => {
+      const buffer = new TextBuffer()
+
+      const {path: filePath} = temp.openSync()
+      const content = 'a\nb\nc\n'.repeat(10)
+      fs.writeFileSync(filePath, content, 'utf16le')
+
+      let rejection = null
+      return buffer.load(filePath, {encoding: 'GARBAGE16'})
+        .catch(error => rejection = error)
+        .then(() => assert.equal(rejection.message, 'Invalid encoding name: GARBAGE16'))
+    })
+
+    it('aborts if the buffer is modified before the load', () => {
+      const buffer = new TextBuffer('abc')
+      const {path: filePath} = temp.openSync()
+      fs.writeFileSync(filePath, 'def')
+
+      buffer.setText('ghi')
+
+      return buffer.load(filePath).then(result => {
+        assert.equal(result, null)
+        assert.equal(buffer.getText(), 'ghi')
+        assert.ok(buffer.isModified())
+      })
+    })
+
+    it('aborts if the buffer is modified during the load', () => {
+      const buffer = new TextBuffer('abc')
+      const {path: filePath} = temp.openSync()
+      fs.writeFileSync(filePath, 'def')
+
+      const loadPromise = buffer.load(filePath).then(result => {
+        assert.equal(result, null)
+        assert.equal(buffer.getText(), 'ghi')
+        assert.ok(buffer.isModified())
+      })
+
+      buffer.setText('ghi')
+      return loadPromise
+    })
+
+    it('aborts if the progress callback returns false during the load', () => {
+      const buffer = new TextBuffer('abc')
+      const filePath = temp.openSync().path
+      fs.writeFileSync(filePath, '123456789\n'.repeat(100))
+
+      let progressCount = 0
+      function progressCallback() {
+        progressCount++
+        return false
+      }
+
+      return buffer.load(filePath, progressCallback).then((patch) => {
+        assert.notOk(patch)
+        assert.equal(progressCount, 1)
+        assert.equal(buffer.getText(), 'abc')
+        assert.notOk(buffer.isModified())
+      })
+    })
+
+    it('aborts if the final progress callback returns false', () => {
+      const buffer = new TextBuffer('abc')
+      const filePath = temp.openSync().path
+
+      function progressCallback(percentDone, patch) {
+        if (patch) return false
+      }
+
+      return buffer.load(filePath, progressCallback).then((patch) => {
+        assert.notOk(patch)
+        assert.equal(buffer.getText(), 'abc')
+        assert.notOk(buffer.isModified())
+      })
+    })
+
+    it('can handle a variety of encodings', () => {
+      const filePath = temp.openSync().path
+      fs.writeFileSync(filePath, 'abc', 'ascii')
+
+      return Promise.all(encodings.map((encoding) =>
+        new TextBuffer().load(filePath, {encoding})
+      ))
+    })
+
+    it('handles paths containing non-ascii characters', () => {
+      const directory = temp.mkdirSync()
+      const filePath = path.join(directory, 'русский.txt')
+      fs.writeFileSync(filePath, 'Hello')
+      const buffer = new TextBuffer()
+      return buffer.load(filePath).then(() => {
+        assert.equal(buffer.getText(), 'Hello')
+
+        buffer.setTextInRange(Range(Point(0, 5), Point(0, 5)), '!')
+        return buffer.save(filePath).then(() => {
+          assert.equal(fs.readFileSync(filePath), 'Hello!')
+        })
+      })
+    })
+
+    describe('when the `force` option is set to true', () => {
+      it('discards any modifications and incorporates that change into the resolved patch', () => {
+        const buffer = new TextBuffer('abcdef')
+        const {path: filePath} = temp.openSync()
+        fs.writeFileSync(filePath, '  abcdef')
+
+        buffer.setTextInRange(Range(Point(0, 3), Point(0, 3)), ' ')
+        assert.equal(buffer.getText(), 'abc def')
+        assert.ok(buffer.isModified())
+
+        const loadPromise = buffer.load(filePath, {force: true}).then(patch => {
+          assert.equal(buffer.getText(), '  abcdef')
+          assert.notOk(buffer.isModified())
+          assert.deepEqual(toPlainObject(patch.getChanges()), [
+            {
+              oldStart: {row: 0, column: 0}, oldEnd: {row: 0, column: 0},
+              newStart: {row: 0, column: 0}, newEnd: {row: 0, column: 2},
+              oldText: '',
+              newText: '  '
+            },
+            {
+              oldStart: {row: 0, column: 3}, oldEnd: {row: 0, column: 4},
+              newStart: {row: 0, column: 5}, newEnd: {row: 0, column: 5},
+              oldText: ' ',
+              newText: ''
+            },
+            {
+              oldStart: {row: 0, column: 7}, oldEnd: {row: 0, column: 8},
+              newStart: {row: 0, column: 8}, newEnd: {row: 0, column: 8},
+              oldText: ' ',
+              newText: ''
+            }
+          ])
+        })
+
+        buffer.setTextInRange(Range(Point(0, 7), Point(0, 7)), ' ')
+        assert.equal(buffer.getText(), 'abc def ')
+        assert.ok(buffer.isModified())
+
+        return loadPromise
+      })
+
+      it('marks the buffer as unmodified even if the reload does not change the text', () => {
+        const buffer = new TextBuffer('abcdef')
+
+        const {path: filePath} = temp.openSync()
+        const fileContent = '  abcdef'
+        fs.writeFileSync(filePath, fileContent)
+
+        buffer.setTextInRange(Range(Point(0, 0), Point(0, 0)), '  ')
+        assert.ok(buffer.isModified())
+        assert.equal(buffer.getText(), fileContent)
+
+        return buffer.load(filePath, {force: true}).then(patch => {
+          assert.equal(patch.getChanges(), 0)
+          assert.equal(buffer.getText(), '  abcdef')
+          assert.notOk(buffer.isModified())
+        })
+      })
+    })
+
+    describe('when the `patch` option is set to false', () => {
+      it('does not compute a Patch representing the changes', () => {
+        const buffer = new TextBuffer()
+
+        const filePath = temp.openSync().path
+        fs.writeFileSync(filePath, 'abc')
+
+        return buffer.load(filePath, {patch: false}).then((patch) => {
+          assert.equal(patch, null)
+          assert.equal(buffer.getText(), 'abc')
+
+          buffer.setTextInRange(Range(Point(0, 0), Point(0, 0)), '  ')
+          return buffer.load(filePath, {patch: false, force: true}).then((patch) => {
+            assert.equal(patch, null)
+            assert.equal(buffer.getText(), 'abc')
+          })
+        })
+      })
+    })
+
+    describe('error handling', () => {
+      it('rejects with an error if the path points to a directory', (done) => {
+        const buffer = new TextBuffer()
+        const filePath = temp.mkdirSync()
+
+        return buffer.load(filePath)
+          .then(() => {
+            done(new Error('Expected an error'))
+          })
+          .catch((error) => {
+            if (!isWindows) {
+              assert.include(error.message, ' read ')
+              assert.equal(error.code, 'EISDIR')
+            }
+            assert.equal(error.path, filePath)
+            done()
+          })
+      })
+
+      it('rejects with an error if the path is a circular symlink', (done) => {
+        const tempDir = temp.mkdirSync()
+        const filePath = path.join(tempDir, 'one')
+        const otherPath = path.join(tempDir, 'two')
+        fs.symlinkSync(filePath, otherPath)
+        fs.symlinkSync(otherPath, filePath)
+
+        const buffer = new TextBuffer()
+        return buffer.load(filePath)
+          .then(() => {
+            done(new Error('Expected an error'))
+          })
+          .catch((error) => {
+            if (!isWindows) {
+              assert.include(error.message, ' open ')
+              assert.equal(error.code, 'ELOOP')
+            }
+            assert.equal(error.path, filePath)
+            done()
+          })
+      })
+    })
+  })
 
   describe('.baseTextMatchesFile', () => {
     if (!TextBuffer.prototype.baseTextMatchesFile) return;
@@ -658,20 +658,20 @@ describe('TextBuffer', () => {
           })
       })
 
-      // it('rejects if neither the text nor the replacement character can be represented in the given encoding', (done) => {
-      //   const buffer = new TextBuffer('💪💪💪')
-      //   const {path: filePath} = temp.openSync()
-      //   return buffer.save(filePath, 'iso88591')
-      //     .then(() => {
-      //       done(new Error('Expected an error'))
-      //     })
-      //     .catch((error) => {
-      //       assert.include(error.message, ' write ')
-      //       assert.equal(error.code, 'EILSEQ')
-      //       assert.equal(error.path, filePath)
-      //       done()
-      //     })
-      // })
+      it('rejects if neither the text nor the replacement character can be represented in the given encoding', (done) => {
+        const buffer = new TextBuffer('💪💪💪')
+        const {path: filePath} = temp.openSync()
+        return buffer.save(filePath, 'iso88591')
+          .then(() => {
+            done(new Error('Expected an error'))
+          })
+          .catch((error) => {
+            assert.include(error.message, ' write ')
+            assert.equal(error.code, 'EILSEQ')
+            assert.equal(error.path, filePath)
+            done()
+          })
+      })
 
       it('rejects with an error if writing to a stream fails', (done) => {
         const tempDir = temp.mkdirSync()
@@ -860,27 +860,27 @@ describe('TextBuffer', () => {
     })
   })
 
-  // describe('.characterIndexForPosition and .positionForCharacterIndex', () => {
-  //   it('returns the character index for the given position', () => {
-  //     const buffer = new TextBuffer()
-  //     buffer.setText('abc\r\ndefg\n\r\nhijkl')
-  //
-  //     assert.equal(buffer.characterIndexForPosition(Point(0, 2)), 2)
-  //     assert.deepEqual(buffer.positionForCharacterIndex(2), Point(0, 2))
-  //     assert.equal(buffer.characterIndexForPosition(Point(0, 3)), 3)
-  //     assert.deepEqual(buffer.positionForCharacterIndex(3), Point(0, 3))
-  //     assert.equal(buffer.characterIndexForPosition(Point(0, 4)), 3)
-  //     assert.equal(buffer.characterIndexForPosition(Point(0, Infinity)), 3)
-  //     assert.deepEqual(buffer.positionForCharacterIndex(4), Point(0, 3))
-  //     assert.equal(buffer.characterIndexForPosition(Point(1, 0)), 5)
-  //     assert.deepEqual(buffer.positionForCharacterIndex(5), Point(1, 0))
-  //     assert.equal(buffer.characterIndexForPosition(Point(1, 1)), 6)
-  //     assert.deepEqual(buffer.positionForCharacterIndex(6), Point(1, 1))
-  //
-  //     assert.equal(buffer.characterIndexForPosition(Point(-1, -1)), 0)
-  //     assert.deepEqual(buffer.positionForCharacterIndex(-1), Point(0, 0))
-  //   })
-  // })
+  describe('.characterIndexForPosition and .positionForCharacterIndex', () => {
+    it('returns the character index for the given position', () => {
+      const buffer = new TextBuffer()
+      buffer.setText('abc\r\ndefg\n\r\nhijkl')
+
+      assert.equal(buffer.characterIndexForPosition(Point(0, 2)), 2)
+      assert.deepEqual(buffer.positionForCharacterIndex(2), Point(0, 2))
+      assert.equal(buffer.characterIndexForPosition(Point(0, 3)), 3)
+      assert.deepEqual(buffer.positionForCharacterIndex(3), Point(0, 3))
+      assert.equal(buffer.characterIndexForPosition(Point(0, 4)), 3)
+      assert.equal(buffer.characterIndexForPosition(Point(0, Infinity)), 3)
+      assert.deepEqual(buffer.positionForCharacterIndex(4), Point(0, 3))
+      assert.equal(buffer.characterIndexForPosition(Point(1, 0)), 5)
+      assert.deepEqual(buffer.positionForCharacterIndex(5), Point(1, 0))
+      assert.equal(buffer.characterIndexForPosition(Point(1, 1)), 6)
+      assert.deepEqual(buffer.positionForCharacterIndex(6), Point(1, 1))
+
+      assert.equal(buffer.characterIndexForPosition(Point(-1, -1)), 0)
+      assert.deepEqual(buffer.positionForCharacterIndex(-1), Point(0, 0))
+    })
+  })
 
   describe('.baseTextDigest', () => {
     if (!TextBuffer.prototype.baseTextDigest) return
@@ -914,525 +914,525 @@ describe('TextBuffer', () => {
     })
   })
 
-  // describe('.find (sync and async)', () => {
-  //   it('returns the range of the first match with the given pattern', async () => {
-  //     const buffer = new TextBuffer('abc\ndef')
-  //     buffer.setTextInRange(Range(Point(0, 0), Point(0, 0)), '1')
-  //     buffer.setTextInRange(Range(Point(0, 3), Point(0, 4)), '2')
-  //     assert.equal(buffer.getText(), '1ab2\ndef')
-  //
-  //     assert.deepEqual(buffer.findSync('b2'), Range(Point(0, 2), Point(0, 4)))
-  //     assert.deepEqual(buffer.findSync('bc'), null)
-  //     assert.deepEqual(buffer.findSync('^d'), Range(Point(1, 0), Point(1, 1)))
-  //
-  //     assert.deepEqual(await buffer.find('b2'), Range(Point(0, 2), Point(0, 4)))
-  //     assert.deepEqual(await buffer.find('bc'), null)
-  //     assert.deepEqual(await buffer.find('^d'), Range(Point(1, 0), Point(1, 1)))
-  //   })
-  //
-  //   it('throws an exception if an invalid pattern is passed', async () => {
-  //     const buffer = new TextBuffer('abc\ndef')
-  //
-  //     try {
-  //       buffer.findSync('[')
-  //       assert(false, 'Expected an exception')
-  //     } catch (error) {
-  //       assert.match(error.message, /missing terminating ] for character class/)
-  //     }
-  //
-  //     try {
-  //       await buffer.find('[')
-  //       assert(false, 'Expected an exception')
-  //     } catch (error) {
-  //       assert.match(error.message, /missing terminating ] for character class/)
-  //     }
-  //   })
-  //
-  //   it('can be called repeatedly with the same RegExp to avoid recompiling the RegExp', async () => {
-  //     const buffer = new TextBuffer('abc\ndef')
-  //
-  //     const regex = /b/
-  //     assert.deepEqual(buffer.findSync(regex), Range(Point(0, 1), Point(0, 2)))
-  //     assert.deepEqual(await buffer.find(regex), Range(Point(0, 1), Point(0, 2)))
-  //
-  //     buffer.setTextInRange(Range(Point(0, 0), Point(0, 0)), ' ')
-  //     assert.deepEqual(buffer.findSync(regex), Range(Point(0, 2), Point(0, 3)))
-  //     assert.deepEqual(await buffer.find(regex), Range(Point(0, 2), Point(0, 3)))
-  //
-  //     buffer.setTextInRange(Range(Point(0, 0), Point(0, 0)), ' ')
-  //     assert.deepEqual(buffer.findSync(regex), Range(Point(0, 3), Point(0, 4)))
-  //     assert.deepEqual(await buffer.find(regex), Range(Point(0, 3), Point(0, 4)))
-  //   })
-  //
-  //   it('supports regexes with unicode escape sequences', () => {
-  //     const buffer = new TextBuffer('åå é')
-  //     assert.equal('\u00e5', 'å')
-  //     assert.deepEqual(buffer.findSync('\u00e5+'), Range(Point(0, 0), Point(0, 2)))
-  //     assert.deepEqual(buffer.findSync(/\u00e5+/), Range(Point(0, 0), Point(0, 2)))
-  //
-  //     // Like with JS regexes, invalid unicode escape sequences just match their literal content.
-  //     assert.equal(buffer.findSync(/\uxxxx/), null)
-  //     buffer.setText('a \\uxxxx b')
-  //     assert.deepEqual(buffer.findSync(/\uxxxx/), Range(Point(0, 2), Point(0, 8)))
-  //
-  //     assert.deepEqual(buffer.findSync(/\uxxx/), Range(Point(0, 2), Point(0, 7)))
-  //     assert.deepEqual(buffer.findSync(/\uxx/), Range(Point(0, 2), Point(0, 6)))
-  //
-  //     // Escaped "\\u" sequences match literal "\u"
-  //     buffer.setText('a \\u00e5 b')
-  //     assert.deepEqual(buffer.findSync(/\\u00e5/), Range(Point(0, 2), Point(0, 8)))
-  //   })
-  // })
-  //
-  // describe('.findInRange (sync and async)', () => {
-  //   it('returns the range of the first match in the given range', async () => {
-  //     const buffer = new TextBuffer('abc def\nghi jkl\n')
-  //     buffer.setTextInRange(Range(Point(0, 1), Point(0, 2)), 'B')
-  //     buffer.setTextInRange(Range(Point(1, 2), Point(1, 3)), 'F')
-  //
-  //     assert.deepEqual(
-  //       buffer.findInRangeSync(/\w+/, Range(Point(0, 1), Point(1, 2))),
-  //       Range(Point(0, 1), Point(0, 3)))
-  //     assert.deepEqual(
-  //       await buffer.findInRange(/\w+/, Range(Point(0, 1), Point(1, 2))),
-  //       Range(Point(0, 1), Point(0, 3)))
-  //     assert.deepEqual(
-  //       buffer.findInRangeSync(/j\w*/, Range(Point(0, 0), Point(1, 6))),
-  //       Range(Point(1, 4), Point(1, 6)))
-  //     assert.deepEqual(
-  //       await buffer.findInRange(/j\w*/, Range(Point(0, 0), Point(1, 6))),
-  //       Range(Point(1, 4), Point(1, 6)))
-  //   })
-  // })
-  //
-  // describe('.findAll (sync and async)', () => {
-  //   it('returns the ranges of all matches of the given pattern', async () => {
-  //     const buffer = new TextBuffer('abcd')
-  //     buffer.setTextInRange(Range(Point(0, 1), Point(0, 1)), '1')
-  //     buffer.setTextInRange(Range(Point(0, 3), Point(0, 3)), '2')
-  //     assert.equal(buffer.getText(), 'a1b2cd')
-  //
-  //     assert.deepEqual(buffer.findAllSync(/\d[a-z]/), [
-  //       Range(Point(0, 1), Point(0, 3)),
-  //       Range(Point(0, 3), Point(0, 5)),
-  //     ])
-  //     assert.deepEqual(await buffer.findAll(/\d[a-z]/), [
-  //       Range(Point(0, 1), Point(0, 3)),
-  //       Range(Point(0, 3), Point(0, 5)),
-  //     ])
-  //   })
-  //
-  //   it('handles empty matches before CRLF line endings (regression)', () => {
-  //     const buffer = new TextBuffer('abc def\r\n\r\nghi jkl\r\n\r\n')
-  //
-  //     assert.deepEqual(buffer.findAllSync(/^[ \t\r]*$/), [
-  //       Range(Point(1, 0), Point(1, 0)),
-  //       Range(Point(3, 0), Point(3, 0)),
-  //       Range(Point(4, 0), Point(4, 0))
-  //     ])
-  //   })
-  //
-  //   it('handles patterns that match the empty string (regression)', () => {
-  //     const buffer = new TextBuffer('aaab\nab\nb')
-  //     assert.deepEqual(buffer.findAllSync(/^a*/), [
-  //       Range(Point(0, 0), Point(0, 3)),
-  //       Range(Point(1, 0), Point(1, 1)),
-  //       Range(Point(2, 0), Point(2, 0))
-  //     ])
-  //
-  //     buffer.setText('aaab\nab\nb\n')
-  //     assert.deepEqual(buffer.findAllSync(/^a*/), [
-  //       Range(Point(0, 0), Point(0, 3)),
-  //       Range(Point(1, 0), Point(1, 1)),
-  //       Range(Point(2, 0), Point(2, 0)),
-  //       Range(Point(3, 0), Point(3, 0)),
-  //     ])
-  //   })
-  //
-  //   it('handles patterns with lookahead that span several chunks', () => {
-  //     const buffer = new TextBuffer('abcdefghi')
-  //     buffer.setTextInRange(Range(Point(0, 3), Point(0, 3)), 'ABC')
-  //     buffer.setTextInRange(Range(Point(0, 9), Point(0, 9)), 'DEF')
-  //     buffer.setTextInRange(Range(Point(0, 15), Point(0, 15)), 'GHI')
-  //     console.log(buffer.getText())
-  //
-  //     assert.deepEqual(buffer.findAllSync(/(cA|Cd)(?=\w+)/), [
-  //       Range(Point(0, 2), Point(0, 4)),
-  //       Range(Point(0, 5), Point(0, 7))
-  //     ])
-  //   })
-  //
-  //   it('handles the case-insensitive flag', () => {
-  //     const buffer = new TextBuffer('aB\nab\nac')
-  //
-  //     assert.deepEqual(buffer.findAllSync(/ab/i), [
-  //       Range(Point(0, 0), Point(0, 2)),
-  //       Range(Point(1, 0), Point(1, 2)),
-  //     ])
-  //   })
-  //
-  //   xit('returns the same results as a reference implementation', () => {
-  //     for (let i = 0; i < 3; i++) {
-  //       const generateSeed = Random.create()
-  //       let seed = generateSeed(MAX_INT32)
-  //       const random = new Random(seed)
-  //       console.log('Seed: ', seed);
-  //
-  //       const testDocument = new TestDocument(seed)
-  //       const buffer = new TextBuffer(testDocument.getText())
-  //
-  //       for (let j = 0; j < 10; j++) {
-  //         const {start, deletedExtent, insertedText} = testDocument.performRandomSplice()
-  //         buffer.setTextInRange(
-  //           {start, end: traverse(start, deletedExtent)},
-  //           insertedText
-  //         )
-  //       }
-  //
-  //       assert.equal(buffer.getText(), testDocument.getText())
-  //
-  //       const regexes = [
-  //         /^\w+/mg,
-  //         /[ \t]+$/mg,
-  //         /\w{3}\n\w/mg,
-  //         /[g-z]+\n\s*[a-f]+/mg,
-  //         /[a-f]+(?=\w+)/mg,
-  //       ]
-  //
-  //       for (let j = 0; j < 10; j++) {
-  //         let regex
-  //         if (random(2)) {
-  //           regex = regexes[random(regexes.length)]
-  //         } else {
-  //           const {start, end} = testDocument.buildRandomRange()
-  //           let substring = testDocument.getTextInRange(start, end)
-  //           if (substring === '') substring += '.'
-  //           regex = new RegExp(substring, 'g')
-  //         }
-  //
-  //         if (random(2)) {
-  //           const expectedRanges = testDocument.searchAll(regex)
-  //           const actualRanges = buffer.findAllSync(regex)
-  //           assert.deepEqual(actualRanges, expectedRanges, `Regex: ${regex}, text: ${testDocument.getText()}, j: ${j}`)
-  //         } else {
-  //           const rowCount = testDocument.getExtent().row
-  //           const [startRow, endRow] = [random(rowCount), random(rowCount)].sort((a, b) => a - b)
-  //           const searchRange = {start: {row: startRow, column: 0}, end: {row: endRow, column: Infinity}}
-  //           const expectedRanges = testDocument.searchAllInRange(searchRange, regex)
-  //           const actualRanges = buffer.findAllInRangeSync(regex, searchRange)
-  //           assert.deepEqual(actualRanges, expectedRanges, `Regex: ${regex}, range: ${JSON.stringify(searchRange)}, text: ${testDocument.getText()}`)
-  //         }
-  //       }
-  //     }
-  //   })
-  //
-  //   it('can be called repeatedly between buffer mutations without harming performance', () => {
-  //     let seed = Date.now()
-  //     const random = new Random(seed)
-  //
-  //     let text = ''
-  //     for (let i = 0; i < 10000; i++) {
-  //       text += words[random.intBetween(0, words.length)]
-  //       text += random(5) === 0 ? '\n' : ' '
-  //     }
-  //
-  //     const buffer = new TextBuffer(text + '\n')
-  //     const promises = []
-  //
-  //     for (let i = 0; i < 25; i++) {
-  //       const row = random(buffer.getLineCount())
-  //       const column = random(buffer.lineLengthForRow(row))
-  //       const position = {row, column}
-  //       buffer.setTextInRange({start: position, end: position}, 'x')
-  //       buffer.lineLengthForRow(row)
-  //       promises.push(buffer.findAll(/e/))
-  //     }
-  //
-  //     return Promise.all(promises)
-  //   })
-  // })
+  describe('.find (sync and async)', () => {
+    it('returns the range of the first match with the given pattern', async () => {
+      const buffer = new TextBuffer('abc\ndef')
+      buffer.setTextInRange(Range(Point(0, 0), Point(0, 0)), '1')
+      buffer.setTextInRange(Range(Point(0, 3), Point(0, 4)), '2')
+      assert.equal(buffer.getText(), '1ab2\ndef')
 
-  // describe('.findAllInRange (sync and async)', () => {
-  //   it('returns the ranges of all matches of the given pattern within the given range', async () => {
-  //     const buffer = new TextBuffer('abc def\nghi jkl\n')
-  //
-  //     assert.deepEqual(buffer.findAllInRangeSync(/\w+/, Range(Point(0, 1), Point(1, 2))), [
-  //       Range(Point(0, 1), Point(0, 3)),
-  //       Range(Point(0, 4), Point(0, 7)),
-  //       Range(Point(1, 0), Point(1, 2))
-  //     ])
-  //     assert.deepEqual(await buffer.findAllInRange(/\w+/, Range(Point(0, 1), Point(1, 2))), [
-  //       Range(Point(0, 1), Point(0, 3)),
-  //       Range(Point(0, 4), Point(0, 7)),
-  //       Range(Point(1, 0), Point(1, 2))
-  //     ])
-  //   })
-  //
-  //   it('handles the ^ and $ anchors properly', () => {
-  //     const buffer = new TextBuffer('abc\ndefg\nhijkl')
-  //
-  //     assert.deepEqual(buffer.findAllInRangeSync(/^\w/, Range(Point(0, 1), Point(1, 2))), [
-  //       Range(Point(1, 0), Point(1, 1))
-  //     ])
-  //     assert.deepEqual(buffer.findAllInRangeSync(/\w$/, Range(Point(0, 1), Point(1, 2))), [
-  //       Range(Point(0, 2), Point(0, 3))
-  //     ])
-  //     assert.deepEqual(buffer.findAllInRangeSync(/\w$/, Range(Point(2, 1), Point(2, 5))), [
-  //       Range(Point(2, 4), Point(2, 5))
-  //     ])
-  //     assert.deepEqual(buffer.findAllInRangeSync(/\w$/, Range(Point(2, 1), Point(2, Infinity))), [
-  //       Range(Point(2, 4), Point(2, 5))
-  //     ])
-  //     assert.deepEqual(buffer.findAllInRangeSync(/\w*$/, Range(Point(1, 0), Point(1, Infinity))), [
-  //       Range(Point(1, 0), Point(1, 4))
-  //     ])
-  //   })
-  //
-  //   it('handles the ^ and $ anchors properly (CRLF line endings)', () => {
-  //     const buffer = new TextBuffer('abc\r\ndefg\r\nhijkl')
-  //
-  //     assert.deepEqual(buffer.findAllInRangeSync(/^\w/, Range(Point(0, 1), Point(1, 2))), [
-  //       Range(Point(1, 0), Point(1, 1))
-  //     ])
-  //     assert.deepEqual(buffer.findAllInRangeSync(/\w\r?$/, Range(Point(0, 1), Point(1, 2))), [
-  //       Range(Point(0, 2), Point(0, 3))
-  //     ])
-  //     assert.deepEqual(buffer.findAllInRangeSync(/\w\r?$/, Range(Point(2, 1), Point(2, 5))), [
-  //       Range(Point(2, 4), Point(2, 5))
-  //     ])
-  //     assert.deepEqual(buffer.findAllInRangeSync(/\w\r?$/, Range(Point(2, 1), Point(2, Infinity))), [
-  //       Range(Point(2, 4), Point(2, 5))
-  //     ])
-  //   })
-  //
-  //   it('does not skip empty rows', async () => {
-  //     const buffer = new TextBuffer('\n\n\n\n\n')
-  //
-  //     assert.deepEqual(buffer.findAllInRangeSync(/^.*$/, Range(Point(0, 0), Point(5, 0))), [
-  //       Range(Point(0, 0), Point(0, 0)),
-  //       Range(Point(1, 0), Point(1, 0)),
-  //       Range(Point(2, 0), Point(2, 0)),
-  //       Range(Point(3, 0), Point(3, 0)),
-  //       Range(Point(4, 0), Point(4, 0)),
-  //       Range(Point(5, 0), Point(5, 0))
-  //     ])
-  //   })
-  //
-  //   it('does not match \\r with .', () => {
-  //     const buffer = new TextBuffer('\r')
-  //     assert.lengthOf(buffer.findAllInRangeSync(/./, Range(Point(0, 0), Point(Infinity, Infinity))), 0)
-  //   })
-  //
-  //   it('handles empty lines with CRLF line endings (regression)', () => {
-  //     const buffer = new TextBuffer('abc\r\ndef\r\nghi\r\n')
-  //     buffer.setTextInRange(Range(Point(1, 0), Point(1, Infinity)), '')
-  //     buffer.findAllInRangeSync(/(?:abc)*/, Range(Point(1, 0), Point(2, 0)))
-  //   })
-  //
-  //   it('uses unicode properties for case equivalence', () => {
-  //     const buffer = new TextBuffer('--- Április ---')
-  //     assert.deepEqual(buffer.findAllInRangeSync(/április/iu, Range(Point(0, 0), Point(Infinity, Infinity))), [
-  //       Range(Point(0, 4), Point(0, 11))
-  //     ])
-  //   })
-  // })
+      assert.deepEqual(buffer.findSync('b2'), Range(Point(0, 2), Point(0, 4)))
+      assert.deepEqual(buffer.findSync('bc'), null)
+      assert.deepEqual(buffer.findSync('^d'), Range(Point(1, 0), Point(1, 1)))
 
-  // describe('.findAndMarkAllSync', () => {
-  //   it('stores all of the matching ranges in the given marker index', () => {
-  //     const markerIndex = new MarkerIndex()
-  //     const buffer = new TextBuffer('abc def\nghi jkl\n')
-  //     const count = buffer.findAndMarkAllSync(markerIndex, 5, true, /\w+/)
-  //     assert.equal(count, 4)
-  //     assert.deepEqual(markerIndex.dump(), {
-  //       5: {start: {column: 0, row: 0}, end: {column: 3, row: 0}},
-  //       6: {start: {column: 4, row: 0}, end: {column: 7, row: 0}},
-  //       7: {start: {column: 0, row: 1}, end: {column: 3, row: 1}},
-  //       8: {start: {column: 4, row: 1}, end: {column: 7, row: 1}}
-  //     })
-  //   })
-  // })
+      assert.deepEqual(await buffer.find('b2'), Range(Point(0, 2), Point(0, 4)))
+      assert.deepEqual(await buffer.find('bc'), null)
+      assert.deepEqual(await buffer.find('^d'), Range(Point(1, 0), Point(1, 1)))
+    })
 
-  // describe('.findWordsWithSubsequence and .findWordsWithSubsequenceInRange', () => {
-  //   it('doesn\'t crash intermittently', () => {
-  //     let buffer;
-  //     let promises = []
-  //     for (let k = 0; k < 100; k++) {
-  //       buffer = new TextBuffer('abc')
-  //       promises.push(
-  //         buffer.findWordsWithSubsequence('a', '', 10)
-  //       )
-  //     }
-  //     return Promise.all(promises)
-  //   })
-  //
-  //   it('doesn\'t crash when a job is cancelled', async () => {
-  //     function randomChar () {
-  //       const chars = "abcdefghijklmnopqrstuvwxyz ";
-  //       return chars[Math.floor(Math.random() * chars.length)];
-  //     }
-  //     let buffer = new TextBuffer(`lorem ipsum dolor sit amet, consecuetur adipiscing elit`)
-  //     // This test triggers a known segfault scenario in which a
-  //     // `FindWordsWithSubsequenceInRangeWorker` is created and then needs to
-  //     // be cancelled because of a subsequent call to `set_text_in_range`. Just
-  //     // like the test above, this one will either pass without making any
-  //     // assertions… or crash.
-  //     for (let k = 0; k < 100; k++) {
-  //       let ch = randomChar()
-  //       buffer.findWordsWithSubsequence('lor', '(){} :;,$@%', 20)
-  //       buffer.setTextInRange({ start: { row: 0, column: 8 }, end: { row: 0, column: 9 } }, ch)
-  //       await wait(Math.round(Math.random() * 20))
-  //     }
-  //   })
-  //
-  //   it('resolves with all words matching the given query', () => {
-  //     const buffer = new TextBuffer('banana bandana ban_ana bandaid band bNa\nbanana')
-  //     return buffer.findWordsWithSubsequence('bna', '_', 4).then((result) => {
-  //       assert.deepEqual(result, [
-  //         {
-  //           score: 29,
-  //           matchIndices: [0, 1, 2 ],
-  //           positions: [{row: 0, column: 36}],
-  //           word: "bNa"
-  //         },
-  //         {
-  //           score: 16,
-  //           matchIndices: [0, 2, 4],
-  //           positions: [{row: 0, column: 15}],
-  //           word: "ban_ana"
-  //         },
-  //         {
-  //           score: 12,
-  //           matchIndices: [0, 2, 3],
-  //           positions: [{row: 0, column: 0}, {row: 1, column: 0}],
-  //           word: "banana"
-  //         },
-  //         {
-  //           score: 7,
-  //           matchIndices: [0, 5, 6],
-  //           positions: [{row: 0, column: 7}],
-  //           word: "bandana"
-  //         }
-  //       ])
-  //     })
-  //   })
-  //
-  //   it('resolves with all words matching the given query and range', () => {
-  //     const buffer = new TextBuffer('banana bandana ban_ana bandaid band bNa\nbanana')
-  //     const range = {start: {column: 0, row: 0}, end: {column: 22, row: 0}}
-  //     return buffer.findWordsWithSubsequenceInRange('bna', '_', 4, range).then((result) => {
-  //       assert.deepEqual(result, [
-  //         {
-  //           score: 16,
-  //           matchIndices: [0, 2, 4],
-  //           positions: [{row: 0, column: 15}],
-  //           word: "ban_ana"
-  //         },
-  //         {
-  //           score: 12,
-  //           matchIndices: [0, 2, 3],
-  //           positions: [{row: 0, column: 0}],
-  //           word: "banana"
-  //         },
-  //         {
-  //           score: 7,
-  //           matchIndices: [0, 5, 6],
-  //           positions: [{row: 0, column: 7}],
-  //           word: "bandana"
-  //         }
-  //       ])
-  //     })
-  //   })
-  //
-  //   it('prioritizes words in which beginnings of subwords match the query', async () => {
-  //     const buffer = new TextBuffer(`
-  //       leading_mismatch_penalty
-  //       partial_match_position
-  //       clampedRange
-  //     `)
-  //
-  //     assert.deepEqual((await buffer.findWordsWithSubsequence('lmp', '_', 3)).map(({word}) => word), [
-  //       'leading_mismatch_penalty',
-  //       'partial_match_position',
-  //       'clampedRange',
-  //     ])
-  //   })
-  //
-  //   it('prioritizes words in which consecutive letters match the query', async () => {
-  //     const buffer = new TextBuffer(`
-  //       deserialize
-  //       deserializer
-  //       savePromise
-  //       savePromises
-  //     `)
-  //
-  //     assert.deepEqual((await buffer.findWordsWithSubsequence('seri', '_', 4)).map(({word}) => word), [
-  //       'deserialize',
-  //       'deserializer',
-  //       'savePromise',
-  //       'savePromises',
-  //     ])
-  //   })
-  //
-  //   it('does not compute matches for words longer than 80 characters', () => {
-  //     const buffer = new TextBuffer('eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbIi4uLy4uL2xpYi9jb252ZXJ0LmpzIl0sIm5hbWVzIjpbImxzi')
-  //     const buffer2 = new TextBuffer('eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbIi4uLy4uL2xpYi9jb252ZXJ0LmpzIl0sIm5hbWVzIjpbImxz')
-  //     return buffer.findWordsWithSubsequence('eyJ', '', 1).then(results => {
-  //       assert.equal(results.length, 0)
-  //       return buffer2.findWordsWithSubsequence('eyJ', '', 1).then(results => {
-  //         assert.equal(results.length, 1)
-  //       })
-  //     })
-  //   })
-  //
-  //   it('can be called repeatedly between buffer mutations without harming performance', () => {
-  //     let seed = Date.now()
-  //     const random = new Random(seed)
-  //
-  //     let text = ''
-  //     for (let i = 0; i < 1000; i++) {
-  //       text += words[random.intBetween(0, words.length)]
-  //       text += random(5) === 0 ? '\n' : ' '
-  //     }
-  //
-  //     const buffer = new TextBuffer(text + '\n')
-  //     const promises = []
-  //
-  //     const row = random(buffer.getLineCount())
-  //     const column = random(buffer.lineLengthForRow(row))
-  //     const position = {row, column}
-  //     buffer.setTextInRange({start: position, end: position}, ' ')
-  //     position.column++
-  //
-  //     // Simulate typing one character repeatedly
-  //     let query = ''
-  //     for (let i = 0; i < 100; i++) {
-  //       buffer.setTextInRange({start: position, end: position}, 'x')
-  //       query += 'x'
-  //       const text = buffer.getText()
-  //       promises.push(buffer.findWordsWithSubsequence(query, '', 1).then(matches => ({matches, text})))
-  //     }
-  //
-  //     return Promise.all(promises).then(subsequenceMatchResults => {
-  //       for (const {matches, text} of subsequenceMatchResults) {
-  //         // If the search was cancelled, `findWordsWithSubsequence` will resolve with `null`.
-  //         if (matches) {
-  //           const buffer = new TextBuffer(text)
-  //           for (const match of matches) {
-  //             for (const position of match.positions) {
-  //               assert.equal(
-  //                 buffer.getTextInRange({
-  //                   start: position,
-  //                   end: {row: position.row, column: position.column + match.word.length}}
-  //                 ),
-  //                 match.word
-  //               )
-  //             }
-  //           }
-  //         }
-  //       }
-  //     })
-  //   })
-  // })
+    it('throws an exception if an invalid pattern is passed', async () => {
+      const buffer = new TextBuffer('abc\ndef')
+
+      try {
+        buffer.findSync('[')
+        assert(false, 'Expected an exception')
+      } catch (error) {
+        assert.match(error.message, /missing terminating ] for character class/)
+      }
+
+      try {
+        await buffer.find('[')
+        assert(false, 'Expected an exception')
+      } catch (error) {
+        assert.match(error.message, /missing terminating ] for character class/)
+      }
+    })
+
+    it('can be called repeatedly with the same RegExp to avoid recompiling the RegExp', async () => {
+      const buffer = new TextBuffer('abc\ndef')
+
+      const regex = /b/
+      assert.deepEqual(buffer.findSync(regex), Range(Point(0, 1), Point(0, 2)))
+      assert.deepEqual(await buffer.find(regex), Range(Point(0, 1), Point(0, 2)))
+
+      buffer.setTextInRange(Range(Point(0, 0), Point(0, 0)), ' ')
+      assert.deepEqual(buffer.findSync(regex), Range(Point(0, 2), Point(0, 3)))
+      assert.deepEqual(await buffer.find(regex), Range(Point(0, 2), Point(0, 3)))
+
+      buffer.setTextInRange(Range(Point(0, 0), Point(0, 0)), ' ')
+      assert.deepEqual(buffer.findSync(regex), Range(Point(0, 3), Point(0, 4)))
+      assert.deepEqual(await buffer.find(regex), Range(Point(0, 3), Point(0, 4)))
+    })
+
+    it('supports regexes with unicode escape sequences', () => {
+      const buffer = new TextBuffer('åå é')
+      assert.equal('\u00e5', 'å')
+      assert.deepEqual(buffer.findSync('\u00e5+'), Range(Point(0, 0), Point(0, 2)))
+      assert.deepEqual(buffer.findSync(/\u00e5+/), Range(Point(0, 0), Point(0, 2)))
+
+      // Like with JS regexes, invalid unicode escape sequences just match their literal content.
+      assert.equal(buffer.findSync(/\uxxxx/), null)
+      buffer.setText('a \\uxxxx b')
+      assert.deepEqual(buffer.findSync(/\uxxxx/), Range(Point(0, 2), Point(0, 8)))
+
+      assert.deepEqual(buffer.findSync(/\uxxx/), Range(Point(0, 2), Point(0, 7)))
+      assert.deepEqual(buffer.findSync(/\uxx/), Range(Point(0, 2), Point(0, 6)))
+
+      // Escaped "\\u" sequences match literal "\u"
+      buffer.setText('a \\u00e5 b')
+      assert.deepEqual(buffer.findSync(/\\u00e5/), Range(Point(0, 2), Point(0, 8)))
+    })
+  })
+
+  describe('.findInRange (sync and async)', () => {
+    it('returns the range of the first match in the given range', async () => {
+      const buffer = new TextBuffer('abc def\nghi jkl\n')
+      buffer.setTextInRange(Range(Point(0, 1), Point(0, 2)), 'B')
+      buffer.setTextInRange(Range(Point(1, 2), Point(1, 3)), 'F')
+
+      assert.deepEqual(
+        buffer.findInRangeSync(/\w+/, Range(Point(0, 1), Point(1, 2))),
+        Range(Point(0, 1), Point(0, 3)))
+      assert.deepEqual(
+        await buffer.findInRange(/\w+/, Range(Point(0, 1), Point(1, 2))),
+        Range(Point(0, 1), Point(0, 3)))
+      assert.deepEqual(
+        buffer.findInRangeSync(/j\w*/, Range(Point(0, 0), Point(1, 6))),
+        Range(Point(1, 4), Point(1, 6)))
+      assert.deepEqual(
+        await buffer.findInRange(/j\w*/, Range(Point(0, 0), Point(1, 6))),
+        Range(Point(1, 4), Point(1, 6)))
+    })
+  })
+
+  describe('.findAll (sync and async)', () => {
+    it('returns the ranges of all matches of the given pattern', async () => {
+      const buffer = new TextBuffer('abcd')
+      buffer.setTextInRange(Range(Point(0, 1), Point(0, 1)), '1')
+      buffer.setTextInRange(Range(Point(0, 3), Point(0, 3)), '2')
+      assert.equal(buffer.getText(), 'a1b2cd')
+
+      assert.deepEqual(buffer.findAllSync(/\d[a-z]/), [
+        Range(Point(0, 1), Point(0, 3)),
+        Range(Point(0, 3), Point(0, 5)),
+      ])
+      assert.deepEqual(await buffer.findAll(/\d[a-z]/), [
+        Range(Point(0, 1), Point(0, 3)),
+        Range(Point(0, 3), Point(0, 5)),
+      ])
+    })
+
+    it('handles empty matches before CRLF line endings (regression)', () => {
+      const buffer = new TextBuffer('abc def\r\n\r\nghi jkl\r\n\r\n')
+
+      assert.deepEqual(buffer.findAllSync(/^[ \t\r]*$/), [
+        Range(Point(1, 0), Point(1, 0)),
+        Range(Point(3, 0), Point(3, 0)),
+        Range(Point(4, 0), Point(4, 0))
+      ])
+    })
+
+    it('handles patterns that match the empty string (regression)', () => {
+      const buffer = new TextBuffer('aaab\nab\nb')
+      assert.deepEqual(buffer.findAllSync(/^a*/), [
+        Range(Point(0, 0), Point(0, 3)),
+        Range(Point(1, 0), Point(1, 1)),
+        Range(Point(2, 0), Point(2, 0))
+      ])
+
+      buffer.setText('aaab\nab\nb\n')
+      assert.deepEqual(buffer.findAllSync(/^a*/), [
+        Range(Point(0, 0), Point(0, 3)),
+        Range(Point(1, 0), Point(1, 1)),
+        Range(Point(2, 0), Point(2, 0)),
+        Range(Point(3, 0), Point(3, 0)),
+      ])
+    })
+
+    it('handles patterns with lookahead that span several chunks', () => {
+      const buffer = new TextBuffer('abcdefghi')
+      buffer.setTextInRange(Range(Point(0, 3), Point(0, 3)), 'ABC')
+      buffer.setTextInRange(Range(Point(0, 9), Point(0, 9)), 'DEF')
+      buffer.setTextInRange(Range(Point(0, 15), Point(0, 15)), 'GHI')
+      console.log(buffer.getText())
+
+      assert.deepEqual(buffer.findAllSync(/(cA|Cd)(?=\w+)/), [
+        Range(Point(0, 2), Point(0, 4)),
+        Range(Point(0, 5), Point(0, 7))
+      ])
+    })
+
+    it('handles the case-insensitive flag', () => {
+      const buffer = new TextBuffer('aB\nab\nac')
+
+      assert.deepEqual(buffer.findAllSync(/ab/i), [
+        Range(Point(0, 0), Point(0, 2)),
+        Range(Point(1, 0), Point(1, 2)),
+      ])
+    })
+
+    it('returns the same results as a reference implementation', () => {
+      for (let i = 0; i < 3; i++) {
+        const generateSeed = Random.create()
+        let seed = generateSeed(MAX_INT32)
+        const random = new Random(seed)
+        console.log('Seed: ', seed);
+
+        const testDocument = new TestDocument(seed)
+        const buffer = new TextBuffer(testDocument.getText())
+
+        for (let j = 0; j < 10; j++) {
+          const {start, deletedExtent, insertedText} = testDocument.performRandomSplice()
+          buffer.setTextInRange(
+            {start, end: traverse(start, deletedExtent)},
+            insertedText
+          )
+        }
+
+        assert.equal(buffer.getText(), testDocument.getText())
+
+        const regexes = [
+          /^\w+/mg,
+          /[ \t]+$/mg,
+          /\w{3}\n\w/mg,
+          /[g-z]+\n\s*[a-f]+/mg,
+          /[a-f]+(?=\w+)/mg,
+        ]
+
+        for (let j = 0; j < 10; j++) {
+          let regex
+          if (random(2)) {
+            regex = regexes[random(regexes.length)]
+          } else {
+            const {start, end} = testDocument.buildRandomRange()
+            let substring = testDocument.getTextInRange(start, end)
+            if (substring === '') substring += '.'
+            regex = new RegExp(substring, 'g')
+          }
+
+          if (random(2)) {
+            const expectedRanges = testDocument.searchAll(regex)
+            const actualRanges = buffer.findAllSync(regex)
+            assert.deepEqual(actualRanges, expectedRanges, `Regex: ${regex}, text: ${testDocument.getText()}, j: ${j}`)
+          } else {
+            const rowCount = testDocument.getExtent().row
+            const [startRow, endRow] = [random(rowCount), random(rowCount)].sort((a, b) => a - b)
+            const searchRange = {start: {row: startRow, column: 0}, end: {row: endRow, column: Infinity}}
+            const expectedRanges = testDocument.searchAllInRange(searchRange, regex)
+            const actualRanges = buffer.findAllInRangeSync(regex, searchRange)
+            assert.deepEqual(actualRanges, expectedRanges, `Regex: ${regex}, range: ${JSON.stringify(searchRange)}, text: ${testDocument.getText()}`)
+          }
+        }
+      }
+    })
+
+    it('can be called repeatedly between buffer mutations without harming performance', () => {
+      let seed = Date.now()
+      const random = new Random(seed)
+
+      let text = ''
+      for (let i = 0; i < 10000; i++) {
+        text += words[random.intBetween(0, words.length)]
+        text += random(5) === 0 ? '\n' : ' '
+      }
+
+      const buffer = new TextBuffer(text + '\n')
+      const promises = []
+
+      for (let i = 0; i < 25; i++) {
+        const row = random(buffer.getLineCount())
+        const column = random(buffer.lineLengthForRow(row))
+        const position = {row, column}
+        buffer.setTextInRange({start: position, end: position}, 'x')
+        buffer.lineLengthForRow(row)
+        promises.push(buffer.findAll(/e/))
+      }
+
+      return Promise.all(promises)
+    })
+  })
+
+  describe('.findAllInRange (sync and async)', () => {
+    it('returns the ranges of all matches of the given pattern within the given range', async () => {
+      const buffer = new TextBuffer('abc def\nghi jkl\n')
+
+      assert.deepEqual(buffer.findAllInRangeSync(/\w+/, Range(Point(0, 1), Point(1, 2))), [
+        Range(Point(0, 1), Point(0, 3)),
+        Range(Point(0, 4), Point(0, 7)),
+        Range(Point(1, 0), Point(1, 2))
+      ])
+      assert.deepEqual(await buffer.findAllInRange(/\w+/, Range(Point(0, 1), Point(1, 2))), [
+        Range(Point(0, 1), Point(0, 3)),
+        Range(Point(0, 4), Point(0, 7)),
+        Range(Point(1, 0), Point(1, 2))
+      ])
+    })
+
+    it('handles the ^ and $ anchors properly', () => {
+      const buffer = new TextBuffer('abc\ndefg\nhijkl')
+
+      assert.deepEqual(buffer.findAllInRangeSync(/^\w/, Range(Point(0, 1), Point(1, 2))), [
+        Range(Point(1, 0), Point(1, 1))
+      ])
+      assert.deepEqual(buffer.findAllInRangeSync(/\w$/, Range(Point(0, 1), Point(1, 2))), [
+        Range(Point(0, 2), Point(0, 3))
+      ])
+      assert.deepEqual(buffer.findAllInRangeSync(/\w$/, Range(Point(2, 1), Point(2, 5))), [
+        Range(Point(2, 4), Point(2, 5))
+      ])
+      assert.deepEqual(buffer.findAllInRangeSync(/\w$/, Range(Point(2, 1), Point(2, Infinity))), [
+        Range(Point(2, 4), Point(2, 5))
+      ])
+      assert.deepEqual(buffer.findAllInRangeSync(/\w*$/, Range(Point(1, 0), Point(1, Infinity))), [
+        Range(Point(1, 0), Point(1, 4))
+      ])
+    })
+
+    it('handles the ^ and $ anchors properly (CRLF line endings)', () => {
+      const buffer = new TextBuffer('abc\r\ndefg\r\nhijkl')
+
+      assert.deepEqual(buffer.findAllInRangeSync(/^\w/, Range(Point(0, 1), Point(1, 2))), [
+        Range(Point(1, 0), Point(1, 1))
+      ])
+      assert.deepEqual(buffer.findAllInRangeSync(/\w\r?$/, Range(Point(0, 1), Point(1, 2))), [
+        Range(Point(0, 2), Point(0, 3))
+      ])
+      assert.deepEqual(buffer.findAllInRangeSync(/\w\r?$/, Range(Point(2, 1), Point(2, 5))), [
+        Range(Point(2, 4), Point(2, 5))
+      ])
+      assert.deepEqual(buffer.findAllInRangeSync(/\w\r?$/, Range(Point(2, 1), Point(2, Infinity))), [
+        Range(Point(2, 4), Point(2, 5))
+      ])
+    })
+
+    it('does not skip empty rows', async () => {
+      const buffer = new TextBuffer('\n\n\n\n\n')
+
+      assert.deepEqual(buffer.findAllInRangeSync(/^.*$/, Range(Point(0, 0), Point(5, 0))), [
+        Range(Point(0, 0), Point(0, 0)),
+        Range(Point(1, 0), Point(1, 0)),
+        Range(Point(2, 0), Point(2, 0)),
+        Range(Point(3, 0), Point(3, 0)),
+        Range(Point(4, 0), Point(4, 0)),
+        Range(Point(5, 0), Point(5, 0))
+      ])
+    })
+
+    it('does not match \\r with .', () => {
+      const buffer = new TextBuffer('\r')
+      assert.lengthOf(buffer.findAllInRangeSync(/./, Range(Point(0, 0), Point(Infinity, Infinity))), 0)
+    })
+
+    it('handles empty lines with CRLF line endings (regression)', () => {
+      const buffer = new TextBuffer('abc\r\ndef\r\nghi\r\n')
+      buffer.setTextInRange(Range(Point(1, 0), Point(1, Infinity)), '')
+      buffer.findAllInRangeSync(/(?:abc)*/, Range(Point(1, 0), Point(2, 0)))
+    })
+
+    it('uses unicode properties for case equivalence', () => {
+      const buffer = new TextBuffer('--- Április ---')
+      assert.deepEqual(buffer.findAllInRangeSync(/április/iu, Range(Point(0, 0), Point(Infinity, Infinity))), [
+        Range(Point(0, 4), Point(0, 11))
+      ])
+    })
+  })
+
+  describe('.findAndMarkAllSync', () => {
+    it('stores all of the matching ranges in the given marker index', () => {
+      const markerIndex = new MarkerIndex()
+      const buffer = new TextBuffer('abc def\nghi jkl\n')
+      const count = buffer.findAndMarkAllSync(markerIndex, 5, true, /\w+/)
+      assert.equal(count, 4)
+      assert.deepEqual(markerIndex.dump(), {
+        5: {start: {column: 0, row: 0}, end: {column: 3, row: 0}},
+        6: {start: {column: 4, row: 0}, end: {column: 7, row: 0}},
+        7: {start: {column: 0, row: 1}, end: {column: 3, row: 1}},
+        8: {start: {column: 4, row: 1}, end: {column: 7, row: 1}}
+      })
+    })
+  })
+
+  describe('.findWordsWithSubsequence and .findWordsWithSubsequenceInRange', () => {
+    it('doesn\'t crash intermittently', () => {
+      let buffer;
+      let promises = []
+      for (let k = 0; k < 100; k++) {
+        buffer = new TextBuffer('abc')
+        promises.push(
+          buffer.findWordsWithSubsequence('a', '', 10)
+        )
+      }
+      return Promise.all(promises)
+    })
+
+    it('doesn\'t crash when a job is cancelled', async () => {
+      function randomChar () {
+        const chars = "abcdefghijklmnopqrstuvwxyz ";
+        return chars[Math.floor(Math.random() * chars.length)];
+      }
+      let buffer = new TextBuffer(`lorem ipsum dolor sit amet, consecuetur adipiscing elit`)
+      // This test triggers a known segfault scenario in which a
+      // `FindWordsWithSubsequenceInRangeWorker` is created and then needs to
+      // be cancelled because of a subsequent call to `set_text_in_range`. Just
+      // like the test above, this one will either pass without making any
+      // assertions… or crash.
+      for (let k = 0; k < 100; k++) {
+        let ch = randomChar()
+        buffer.findWordsWithSubsequence('lor', '(){} :;,$@%', 20)
+        buffer.setTextInRange({ start: { row: 0, column: 8 }, end: { row: 0, column: 9 } }, ch)
+        await wait(Math.round(Math.random() * 20))
+      }
+    })
+
+    it('resolves with all words matching the given query', () => {
+      const buffer = new TextBuffer('banana bandana ban_ana bandaid band bNa\nbanana')
+      return buffer.findWordsWithSubsequence('bna', '_', 4).then((result) => {
+        assert.deepEqual(result, [
+          {
+            score: 29,
+            matchIndices: [0, 1, 2 ],
+            positions: [{row: 0, column: 36}],
+            word: "bNa"
+          },
+          {
+            score: 16,
+            matchIndices: [0, 2, 4],
+            positions: [{row: 0, column: 15}],
+            word: "ban_ana"
+          },
+          {
+            score: 12,
+            matchIndices: [0, 2, 3],
+            positions: [{row: 0, column: 0}, {row: 1, column: 0}],
+            word: "banana"
+          },
+          {
+            score: 7,
+            matchIndices: [0, 5, 6],
+            positions: [{row: 0, column: 7}],
+            word: "bandana"
+          }
+        ])
+      })
+    })
+
+    it('resolves with all words matching the given query and range', () => {
+      const buffer = new TextBuffer('banana bandana ban_ana bandaid band bNa\nbanana')
+      const range = {start: {column: 0, row: 0}, end: {column: 22, row: 0}}
+      return buffer.findWordsWithSubsequenceInRange('bna', '_', 4, range).then((result) => {
+        assert.deepEqual(result, [
+          {
+            score: 16,
+            matchIndices: [0, 2, 4],
+            positions: [{row: 0, column: 15}],
+            word: "ban_ana"
+          },
+          {
+            score: 12,
+            matchIndices: [0, 2, 3],
+            positions: [{row: 0, column: 0}],
+            word: "banana"
+          },
+          {
+            score: 7,
+            matchIndices: [0, 5, 6],
+            positions: [{row: 0, column: 7}],
+            word: "bandana"
+          }
+        ])
+      })
+    })
+
+    it('prioritizes words in which beginnings of subwords match the query', async () => {
+      const buffer = new TextBuffer(`
+        leading_mismatch_penalty
+        partial_match_position
+        clampedRange
+      `)
+
+      assert.deepEqual((await buffer.findWordsWithSubsequence('lmp', '_', 3)).map(({word}) => word), [
+        'leading_mismatch_penalty',
+        'partial_match_position',
+        'clampedRange',
+      ])
+    })
+
+    it('prioritizes words in which consecutive letters match the query', async () => {
+      const buffer = new TextBuffer(`
+        deserialize
+        deserializer
+        savePromise
+        savePromises
+      `)
+
+      assert.deepEqual((await buffer.findWordsWithSubsequence('seri', '_', 4)).map(({word}) => word), [
+        'deserialize',
+        'deserializer',
+        'savePromise',
+        'savePromises',
+      ])
+    })
+
+    it('does not compute matches for words longer than 80 characters', () => {
+      const buffer = new TextBuffer('eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbIi4uLy4uL2xpYi9jb252ZXJ0LmpzIl0sIm5hbWVzIjpbImxzi')
+      const buffer2 = new TextBuffer('eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbIi4uLy4uL2xpYi9jb252ZXJ0LmpzIl0sIm5hbWVzIjpbImxz')
+      return buffer.findWordsWithSubsequence('eyJ', '', 1).then(results => {
+        assert.equal(results.length, 0)
+        return buffer2.findWordsWithSubsequence('eyJ', '', 1).then(results => {
+          assert.equal(results.length, 1)
+        })
+      })
+    })
+
+    it('can be called repeatedly between buffer mutations without harming performance', () => {
+      let seed = Date.now()
+      const random = new Random(seed)
+
+      let text = ''
+      for (let i = 0; i < 1000; i++) {
+        text += words[random.intBetween(0, words.length)]
+        text += random(5) === 0 ? '\n' : ' '
+      }
+
+      const buffer = new TextBuffer(text + '\n')
+      const promises = []
+
+      const row = random(buffer.getLineCount())
+      const column = random(buffer.lineLengthForRow(row))
+      const position = {row, column}
+      buffer.setTextInRange({start: position, end: position}, ' ')
+      position.column++
+
+      // Simulate typing one character repeatedly
+      let query = ''
+      for (let i = 0; i < 100; i++) {
+        buffer.setTextInRange({start: position, end: position}, 'x')
+        query += 'x'
+        const text = buffer.getText()
+        promises.push(buffer.findWordsWithSubsequence(query, '', 1).then(matches => ({matches, text})))
+      }
+
+      return Promise.all(promises).then(subsequenceMatchResults => {
+        for (const {matches, text} of subsequenceMatchResults) {
+          // If the search was cancelled, `findWordsWithSubsequence` will resolve with `null`.
+          if (matches) {
+            const buffer = new TextBuffer(text)
+            for (const match of matches) {
+              for (const position of match.positions) {
+                assert.equal(
+                  buffer.getTextInRange({
+                    start: position,
+                    end: {row: position.row, column: position.column + match.word.length}}
+                  ),
+                  match.word
+                )
+              }
+            }
+          }
+        }
+      })
+    })
+  })
 
   describe('.reset', () => {
     it('sets the buffer\'s text and does not consider it modified', () => {
@@ -1459,108 +1459,108 @@ describe('TextBuffer', () => {
     })
   })
 
-  // describe('concurrent IO', function () {
-  //   if (!TextBuffer.prototype.load) return;
-  //
-  //   this.timeout(60 * 1000);
-  //
-  //   it('handles multiple calls to .load at a time', () => {
-  //     const buffer = new TextBuffer('abc')
-  //
-  //     const emptyFilePath = temp.openSync('atom').path
-  //     const smallFilePath = temp.openSync('atom').path
-  //     const largeFilePath = temp.openSync('atom').path
-  //     const smallContent = '123456789\n'.repeat(1024)
-  //     const largeContent = smallContent.repeat(10)
-  //     fs.writeFileSync(smallFilePath, smallContent)
-  //     fs.writeFileSync(largeFilePath, largeContent)
-  //
-  //     const load1 = buffer.load(emptyFilePath).then(() => {
-  //       assert.equal(buffer.getLength(), 0)
-  //     })
-  //
-  //     const load2 = buffer.load(smallFilePath).then(() => {
-  //       assert.equal(buffer.getLength(), smallContent.length)
-  //     })
-  //
-  //     const load3 = buffer.load(largeFilePath).then(() => {
-  //       assert.equal(buffer.getLength(), largeContent.length)
-  //     })
-  //
-  //     return Promise.all([load1, load2, load3])
-  //   })
-  //
-  //   it('handles random concurrent IO calls', () => {
-  //     const generateSeed = Random.create()
-  //     let seed = generateSeed(MAX_INT32)
-  //     const random = new Random(seed)
-  //     const testDocument = new TestDocument(seed)
-  //
-  //     const promises = []
-  //     const buffer = new TextBuffer(testDocument.getText())
-  //     let currentText = buffer.getText()
-  //
-  //     for (let i = 0; i < 20; i++) {
-  //       switch (random(4)) {
-  //         case 0: {
-  //           testDocument.performRandomSplice()
-  //           const text = testDocument.getText()
-  //           const filePath = temp.openSync().path
-  //           const previousText = buffer.getText()
-  //           const wasModified = buffer.isModified()
-  //           fs.writeFileSync(filePath, text, 'utf8')
-  //           promises.push(buffer.load(filePath).then(() => {
-  //             if (!wasModified && !buffer.isModified()) {
-  //               assert.equal(buffer.getText(), text)
-  //               assert.notOk(buffer.isModified())
-  //               currentText = text
-  //             } else {
-  //               assert.equal(buffer.getText(), currentText)
-  //             }
-  //           }))
-  //           break;
-  //         }
-  //
-  //         case 1: {
-  //           const text = testDocument.getText()
-  //           const filePath = temp.openSync().path
-  //           fs.writeFileSync(filePath, text, 'utf8')
-  //           promises.push(buffer.load(filePath, {force: true}).then((patch) => {
-  //             assert.equal(buffer.getText(), text)
-  //             assert.equal(applyPatch(currentText, patch), text)
-  //             currentText = text
-  //             assert.notOk(buffer.isModified())
-  //           }))
-  //           break;
-  //         }
-  //
-  //         case 2: {
-  //           const {start, deletedExtent, insertedText} = testDocument.performRandomSplice()
-  //           buffer.setTextInRange(Range(start, traverse(start, deletedExtent)), insertedText)
-  //           const text = buffer.getText()
-  //           const filePath = temp.openSync().path
-  //           currentText = text
-  //           promises.push(buffer.save(filePath).then(() => {
-  //             assert.equal(fs.readFileSync(filePath, 'utf8'), text)
-  //           }))
-  //           break;
-  //         }
-  //
-  //         case 3: {
-  //           const subtext = buffer.getTextInRange(testDocument.buildRandomRange())
-  //           const regex = new RegExp(subtext)
-  //           const expectedRange = referenceSearch(buffer.getText(), regex)
-  //           promises.push(buffer.find(regex).then((result) => {
-  //             assert.deepEqual(result, expectedRange)
-  //           }))
-  //           break;
-  //         }
-  //       }
-  //     }
-  //
-  //     return Promise.all(promises)
-  //   })
-  // })
+  describe('concurrent IO', function () {
+    if (!TextBuffer.prototype.load) return;
+
+    this.timeout(60 * 1000);
+
+    it('handles multiple calls to .load at a time', () => {
+      const buffer = new TextBuffer('abc')
+
+      const emptyFilePath = temp.openSync('atom').path
+      const smallFilePath = temp.openSync('atom').path
+      const largeFilePath = temp.openSync('atom').path
+      const smallContent = '123456789\n'.repeat(1024)
+      const largeContent = smallContent.repeat(10)
+      fs.writeFileSync(smallFilePath, smallContent)
+      fs.writeFileSync(largeFilePath, largeContent)
+
+      const load1 = buffer.load(emptyFilePath).then(() => {
+        assert.equal(buffer.getLength(), 0)
+      })
+
+      const load2 = buffer.load(smallFilePath).then(() => {
+        assert.equal(buffer.getLength(), smallContent.length)
+      })
+
+      const load3 = buffer.load(largeFilePath).then(() => {
+        assert.equal(buffer.getLength(), largeContent.length)
+      })
+
+      return Promise.all([load1, load2, load3])
+    })
+
+    it('handles random concurrent IO calls', () => {
+      const generateSeed = Random.create()
+      let seed = generateSeed(MAX_INT32)
+      const random = new Random(seed)
+      const testDocument = new TestDocument(seed)
+
+      const promises = []
+      const buffer = new TextBuffer(testDocument.getText())
+      let currentText = buffer.getText()
+
+      for (let i = 0; i < 20; i++) {
+        switch (random(4)) {
+          case 0: {
+            testDocument.performRandomSplice()
+            const text = testDocument.getText()
+            const filePath = temp.openSync().path
+            const previousText = buffer.getText()
+            const wasModified = buffer.isModified()
+            fs.writeFileSync(filePath, text, 'utf8')
+            promises.push(buffer.load(filePath).then(() => {
+              if (!wasModified && !buffer.isModified()) {
+                assert.equal(buffer.getText(), text)
+                assert.notOk(buffer.isModified())
+                currentText = text
+              } else {
+                assert.equal(buffer.getText(), currentText)
+              }
+            }))
+            break;
+          }
+
+          case 1: {
+            const text = testDocument.getText()
+            const filePath = temp.openSync().path
+            fs.writeFileSync(filePath, text, 'utf8')
+            promises.push(buffer.load(filePath, {force: true}).then((patch) => {
+              assert.equal(buffer.getText(), text)
+              assert.equal(applyPatch(currentText, patch), text)
+              currentText = text
+              assert.notOk(buffer.isModified())
+            }))
+            break;
+          }
+
+          case 2: {
+            const {start, deletedExtent, insertedText} = testDocument.performRandomSplice()
+            buffer.setTextInRange(Range(start, traverse(start, deletedExtent)), insertedText)
+            const text = buffer.getText()
+            const filePath = temp.openSync().path
+            currentText = text
+            promises.push(buffer.save(filePath).then(() => {
+              assert.equal(fs.readFileSync(filePath, 'utf8'), text)
+            }))
+            break;
+          }
+
+          case 3: {
+            const subtext = buffer.getTextInRange(testDocument.buildRandomRange())
+            const regex = new RegExp(subtext)
+            const expectedRange = referenceSearch(buffer.getText(), regex)
+            promises.push(buffer.find(regex).then((result) => {
+              assert.deepEqual(result, expectedRange)
+            }))
+            break;
+          }
+        }
+      }
+
+      return Promise.all(promises)
+    })
+  })
 })
 
 function referenceSearch(text, regex) {
