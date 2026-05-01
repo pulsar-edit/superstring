@@ -227,24 +227,26 @@ class TextBuffer {
   // Returns {text, ending} for a given row, or undefined if row is out of bounds.
   _getLineInfo (row) {
     if (row < 0) return
-    const lines = this._text.split(/(?<=\n)/)
-    // A trailing newline produces a virtual empty line at the end
-    const lastIdx = lines.length - 1
-    if (lastIdx >= 0 && /\n$/.test(lines[lastIdx])) {
-      lines.push('')
-    }
-    const line = lines[row]
-    if (line === undefined) return
-    let text = line
+    const text = this._text
+    const starts = this._getLineStarts()
+    if (row >= starts.length) return
+
+    const lineStart = starts[row]
+    const hasNextLine = row + 1 < starts.length
+    const nlOffset = hasNextLine ? starts[row + 1] - 1 : -1
+    const lineEnd = nlOffset === -1 ? text.length : nlOffset
+
+    let contentEnd = lineEnd
     let ending = ''
-    if (text.endsWith('\r\n')) {
-      ending = '\r\n'
-      text = text.slice(0, -2)
-    } else if (text.endsWith('\n')) {
-      ending = '\n'
-      text = text.slice(0, -1)
+    if (nlOffset !== -1) {
+      if (contentEnd > lineStart && text.charCodeAt(contentEnd - 1) === 13) {
+        contentEnd--
+        ending = '\r\n'
+      } else {
+        ending = '\n'
+      }
     }
-    return {text, ending}
+    return {text: text.slice(lineStart, contentEnd), ending}
   }
 
   lineForRow (row) {
@@ -254,9 +256,19 @@ class TextBuffer {
   }
 
   lineLengthForRow (row) {
-    const info = this._getLineInfo(row)
-    if (!info) return undefined
-    return info.text.length
+    if (row < 0) return undefined
+    const text = this._text
+    const starts = this._getLineStarts()
+    if (row >= starts.length) return undefined
+
+    const lineStart = starts[row]
+    const hasNextLine = row + 1 < starts.length
+    const nlOffset = hasNextLine ? starts[row + 1] - 1 : -1
+    let lineEnd = nlOffset === -1 ? text.length : nlOffset
+    if (nlOffset !== -1 && lineEnd > lineStart && text.charCodeAt(lineEnd - 1) === 13) {
+      lineEnd--
+    }
+    return lineEnd - lineStart
   }
 
   lineEndingForRow (row) {
@@ -266,10 +278,19 @@ class TextBuffer {
   }
 
   getLines () {
-    const rowCount = textExtent(this._text).row + 1
+    const text = this._text
+    const starts = this._getLineStarts()
+    const rowCount = starts.length
     const lines = new Array(rowCount)
     for (let row = 0; row < rowCount; row++) {
-      lines[row] = this._getLineInfo(row).text
+      const lineStart = starts[row]
+      const hasNextLine = row + 1 < rowCount
+      const nlOffset = hasNextLine ? starts[row + 1] - 1 : -1
+      let lineEnd = nlOffset === -1 ? text.length : nlOffset
+      if (nlOffset !== -1 && lineEnd > lineStart && text.charCodeAt(lineEnd - 1) === 13) {
+        lineEnd--
+      }
+      lines[row] = text.slice(lineStart, lineEnd)
     }
     return lines
   }
