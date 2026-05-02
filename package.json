@@ -30,6 +30,10 @@
     "url": "https://github.com/pulsar-edit/superstring/issues"
   },
   "homepage": "https://github.com/pulsar-edit/superstring",
+  "dependencies": {
+    "diff": "^1.4.0",
+    "iconv-lite": "^0.6.3"
+  },
   "devDependencies": {
     "chai": "^2.0.0",
     "mocha": "^2.3.4",
