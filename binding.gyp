@@ -29,26 +29,27 @@
                 ['OS=="mac"', {
                     "postbuilds": [
                         {
+                            'postbuild_name': 'Copy vendored libiconv next to the binding',
+                            # `-L` because `ext/lib/libiconv.2.dylib` is a
+                            # symlink to the versioned dylib. We want the real
+                            # file here — a link would still point outside of
+                            # `build/`, which is what we're getting away from.
+                            'action': [
+                                'cp',
+                                '-L',
+                                '<(module_root_dir)/ext/lib/libiconv.2.dylib',
+                                '<(PRODUCT_DIR)/libiconv.2.dylib'
+                            ]
+                        },
+                        {
                             'postbuild_name': 'Adjust vendored libiconv install name',
                             'action': [
                                 'install_name_tool',
                                 "-change",
                                 "libiconv.2.dylib",
-                                "@loader_path/../../ext/lib/libiconv.2.dylib",
+                                "@loader_path/libiconv.2.dylib",
                                 "<(PRODUCT_DIR)/superstring.node"
                             ]
-
-                            # NOTE: This version of the post-build action
-                            # should be used if we find it necessary to avoid
-                            # changing the `dylib`’s install name in an earlier
-                            # step.
-                            #
-                            # 'action': [
-                            #     'bash',
-                            #     '<(module_root_dir)/script/adjust-install-name.sh',
-                            #     '<(PRODUCT_DIR)'
-                            # ]
-
                         }
                     ]
                 }]
@@ -120,7 +121,7 @@
                             "action_name": "Run script",
                             "message": "Building GNU libiconv...",
                             "inputs": [],
-                            "outputs": ["ext"],
+                            "outputs": ["<(module_root_dir)/ext/lib/libiconv.2.dylib"],
                             "action": [
                                 "bash",
                                 "script/fetch-libiconv-61.sh"
@@ -195,27 +196,29 @@
                         },
                         "postbuilds": [
                             {
+                                'postbuild_name': 'Copy vendored libiconv next to the binding',
+                                # `-L` because `ext/lib/libiconv.2.dylib` is a
+                                # symlink to the versioned dylib. We want the real
+                                # file here — a link would still point outside of
+                                # `build/`, which is what we're getting away from.
+                                'action': [
+                                    'cp',
+                                    '-L',
+                                    '<(module_root_dir)/ext/lib/libiconv.2.dylib',
+                                    '<(PRODUCT_DIR)/libiconv.2.dylib'
+                                ]
+                            },
+                            {
                                 'postbuild_name': 'Adjust vendored libiconv install name',
                                 'action': [
-                                  'install_name_tool',
-                                  "-change",
-                                  "libiconv.2.dylib",
-                                  "@executable_path/../../ext/lib/libiconv.2.dylib",
-                                  "<(PRODUCT_DIR)/tests"
+                                    'install_name_tool',
+                                    "-change",
+                                    "libiconv.2.dylib",
+                                    "@executable_path/libiconv.2.dylib",
+                                    "<(PRODUCT_DIR)/tests"
                                 ]
-
-                                # NOTE: This version of the post-build action
-                                # should be used if we find it necessary to avoid
-                                # changing the `dylib`’s install name in an earlier
-                                # step.
-                                #
-                                # 'action': [
-                                #     'bash',
-                                #     '<(module_root_dir)/script/adjust-install-name.sh',
-                                #     '<(PRODUCT_DIR)'
-                                # ]
                             }
-                        ]
+                      ]
                     }]
                 ]
             }]

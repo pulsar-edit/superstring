@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # When compiling `superstring` on macOS, we used to be able to rely on the
 # builtin version of `libiconv`. But newer versions of macOS include FreeBSD
@@ -15,7 +16,7 @@
 echoerr() { echo "$@\n" >&2; }
 
 create-if-missing() {
-  if [ -z "$1" ]; then
+  if [ -f "$1" ]; then
     echoerr "Error: $1 is a file."
     usage
     exit 1
@@ -50,7 +51,7 @@ dylib_path="$EXT/lib/libiconv.2.dylib"
 
 # If this path already exists, we'll assume libiconv has already been fetched
 # and compiled. Otherwise we'll do it now.
-if [ ! -L "$dylib_path" ]; then
+if [ ! -e "$dylib_path" ]; then
   echo "Path $dylib_path is missing; fetching and installing libiconv."
   cd $SCRATCH
   # TODO: Instead of downloading this each time, we can check this into source
@@ -64,7 +65,7 @@ if [ ! -L "$dylib_path" ]; then
   make
   make install
 
-  if [ ! -L "$dylib_path" ]; then
+  if [ ! -e "$dylib_path" ]; then
     echoerr "Error: expected $dylib_path to be present, but it was not. Installation of libiconv failed. Cannot proceed."
     usage
     exit 1
@@ -84,7 +85,7 @@ fi
 cd $ROOT
 
 # We expect this path to exist and be a symbolic link that points to a file.
-if [ ! -L "$dylib_path" ]; then
+if [ ! -e "$dylib_path" ]; then
   echoerr "Error: expected $dylib_path to be present, but it was not. Cannot proceed."
   usage
   exit 1
