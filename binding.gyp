@@ -30,13 +30,9 @@
                     "postbuilds": [
                         {
                             'postbuild_name': 'Copy vendored libiconv next to the binding',
-                            # `-L` because `ext/lib/libiconv.2.dylib` is a
-                            # symlink to the versioned dylib. We want the real
-                            # file here — a link would still point outside of
-                            # `build/`, which is what we're getting away from.
                             'action': [
-                                'cp',
-                                '-L',
+                                'bash',
+                                '<(module_root_dir)/script/copy-libiconv.sh',
                                 '<(module_root_dir)/ext/lib/libiconv.2.dylib',
                                 '<(PRODUCT_DIR)/libiconv.2.dylib'
                             ]
@@ -129,22 +125,6 @@
                         }
                     ]
                 }
-                # {
-                #     "target_name": "find_libiconv",
-                #     "target_type": "none",
-                #     "actions": [
-                #         {
-                #             "action_name": "Run script",
-                #             "message": "Locating GNU libiconv...",
-                #             "inputs": [],
-                #             "outputs": ["vendor/libiconv/lib/libiconv.2.dylib"],
-                #             "action": [
-                #                 "bash",
-                #                 "script/find-gnu-libiconv.sh"
-                #             ]
-                #         }
-                #     ]
-                # }
             ]
         }],
 
@@ -197,13 +177,9 @@
                         "postbuilds": [
                             {
                                 'postbuild_name': 'Copy vendored libiconv next to the binding',
-                                # `-L` because `ext/lib/libiconv.2.dylib` is a
-                                # symlink to the versioned dylib. We want the real
-                                # file here — a link would still point outside of
-                                # `build/`, which is what we're getting away from.
                                 'action': [
-                                    'cp',
-                                    '-L',
+                                    'bash',
+                                    '<(module_root_dir)/script/copy-libiconv.sh',
                                     '<(module_root_dir)/ext/lib/libiconv.2.dylib',
                                     '<(PRODUCT_DIR)/libiconv.2.dylib'
                                 ]

@@ -13,7 +13,7 @@ set -euo pipefail
 # `libiconv.2.dylib`. For now, letting the user compile their own `libiconv`
 # has the advantage of very likely matching the system's architecture.
 
-echoerr() { echo "$@\n" >&2; }
+echoerr() { printf '%s\n\n' "$*" >&2; }
 
 create-if-missing() {
   if [ -f "$1" ]; then
@@ -22,7 +22,7 @@ create-if-missing() {
     exit 1
   fi
   if [ ! -d "$1" ]; then
-    mkdir "$1"
+    mkdir -p "$1"
   fi
 }
 
@@ -53,7 +53,7 @@ dylib_path="$EXT/lib/libiconv.2.dylib"
 # and compiled. Otherwise we'll do it now.
 if [ ! -e "$dylib_path" ]; then
   echo "Path $dylib_path is missing; fetching and installing libiconv."
-  cd $SCRATCH
+  cd "$SCRATCH"
   # TODO: Instead of downloading this each time, we can check this into source
   # control via git subtree. That would allow someone to build this without
   # needing internet connectivity. But we'd still need to do a `make install` —
@@ -82,9 +82,8 @@ else
   echo "Path $dylib_path is already present; skipping installation of libiconv."
 fi
 
-cd $ROOT
+cd "$ROOT"
 
-# We expect this path to exist and be a symbolic link that points to a file.
 if [ ! -e "$dylib_path" ]; then
   echoerr "Error: expected $dylib_path to be present, but it was not. Cannot proceed."
   usage
