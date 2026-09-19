@@ -500,9 +500,10 @@ void query_random_ranges(TextBuffer &buffer, Generator &rand, Text &mutated_text
 TEST_CASE("TextBuffer - random edits and queries") {
   TextBuffer::MAX_CHUNK_SIZE_TO_COPY = 2;
 
-  auto t = time(nullptr);
-  for (uint i = 0; i < 100; i++) {
-    uint32_t seed = t * 1000 + i;
+  auto t = get_seed_base();
+  for (uint32_t i = 0; i < 100; i++) {
+    uint32_t seed = t + i;
+    CAPTURE(seed);
     Generator rand(seed);
     cout << "seed: " << seed << "\n";
 
@@ -516,7 +517,7 @@ TEST_CASE("TextBuffer - random edits and queries") {
     // cout << "edit: " << i << "\n";
     // cout << "extent: " << original_text.extent() << "\ntext: " << original_text << "\n";
 
-    for (uint j = 0; j < 15; j++) {
+    for (uint32_t j = 0; j < 15; j++) {
       // cout << "iteration: " << j << "\n";
 
       Text mutated_text = buffer.text();
