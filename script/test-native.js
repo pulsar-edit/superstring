@@ -4,7 +4,10 @@ const fs = require('fs')
 const path = require('path')
 const {spawnSync} = require('child_process')
 
-const testsPath = path.resolve(__dirname, '..', 'build', 'Debug', 'tests')
+const isWindows = process.platform === 'win32'
+const testsPath = path.resolve(
+  __dirname, '..', 'build', 'Debug', isWindows ? 'tests.exe' : 'tests'
+)
 const dotPath = path.resolve(__dirname, '..', 'build', 'debug.dot')
 const htmlPath = path.join(__dirname, '..', 'build', 'debug.html')
 
@@ -52,6 +55,16 @@ switch (args[0]) {
 }
 
 function run(command, args = [], options = {stdio: 'inherit'}) {
-  const {status} = spawnSync(command, args, options)
-  if (status !== 0) process.exit(status)
+  // `shell` is needed on Windows so that `node-gyp` resolves to `node-gyp.cmd`;
+  // CreateProcess cannot launch a batch file directly.
+  const {status, error} = spawnSync(command, args, {shell: isWindows, ...options})
+
+  // A failure to spawn at all reports `status: null`, which is not `0` — so the
+  // old check handed it to `process.exit`, where Node coerced it to 0 and the
+  // run was reported as a success.
+  if (error) {
+    console.error(`Failed to run ${command}: ${error.message}`)
+    process.exit(1)
+  }
+  if (status !== 0) process.exit(status === null ? 1 : status)
 }
