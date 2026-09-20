@@ -33,7 +33,7 @@ TEST_CASE("EncodingConversion::decode - basic ISO-8859-1") {
 
   u16string string;
   conversion->decode(string, input.data(), input.size());
-  REQUIRE(string == u"qrstüv");
+  REQUIRE(string == u"qrst" u"\x00fc" u"v"); // qrstüv
 }
 
 TEST_CASE("EncodingConversion::decode - invalid byte sequences in the middle of the input") {
@@ -42,7 +42,7 @@ TEST_CASE("EncodingConversion::decode - invalid byte sequences in the middle of 
 
   u16string string;
   conversion->decode(string, input.data(), input.size());
-  REQUIRE(string == u"ab" "\ufffd" "\ufffd" "de");
+  REQUIRE(string == u"ab" u"\ufffd" u"\ufffd" u"de");
 }
 
 TEST_CASE("EncodingConversion::decode - invalid byte sequences at the end of the input") {
@@ -58,7 +58,7 @@ TEST_CASE("EncodingConversion::decode - invalid byte sequences at the end of the
   string.clear();
   bytes_encoded = conversion->decode(string, input.data(), input.size(), true);
   REQUIRE(bytes_encoded == 4);
-  REQUIRE(string == u"ab" "\ufffd" "\ufffd");
+  REQUIRE(string == u"ab" u"\ufffd" u"\ufffd");
 }
 
 TEST_CASE("EncodingConversion::decode - four-byte UTF-16 characters") {

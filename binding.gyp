@@ -221,6 +221,15 @@
                 "defines": [
                     "NOMINMAX"
                 ],
+                # These sources are UTF-8. Absent this flag — and absent a BOM,
+                # which none of them have — MSVC decodes them using the system
+                # ANSI codepage, which mangles non-ASCII characters in string
+                # literals without any diagnostic.
+                "msvs_settings": {
+                    "VCCLCompilerTool": {
+                        "AdditionalOptions": ["/utf-8"]
+                    }
+                },
             }]
         ]
     }
