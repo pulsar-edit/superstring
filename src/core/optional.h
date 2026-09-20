@@ -16,8 +16,13 @@ public:
   const T &operator*() const { return value; }
   const T *operator->() const { return &value; }
   T *operator->() { return &value; }
-  operator bool() const { return is_some; }
-  bool operator==(const optional<T> &other) {
+  // Deliberately `explicit`: an implicit conversion to bool makes
+  // `optional<T> == optional<T>` ambiguous, because the built-in `bool ==
+  // bool` becomes as good a candidate as the member below. Clang and GCC pick
+  // the member anyway; MSVC rejects the comparison outright (C2666). Every
+  // contextual use — `if (x)`, `!x`, `x && y`, `x ? a : b` — still works.
+  explicit operator bool() const { return is_some; }
+  bool operator==(const optional<T> &other) const {
     if (is_some) {
       return other.is_some && value == other.value;
     } else {
