@@ -34,6 +34,13 @@ Text get_random_text(Generator &);
 Range get_random_range(Generator &, const Text &);
 Range get_random_range(Generator &, TextBuffer &);
 
+// Base seed for the randomized test loops. Set SUPERSTRING_TEST_SEED to replay
+// a specific failure; otherwise it comes from the clock so each run explores
+// new scenarios. Seeds are NOT portable across platforms or standard library
+// versions — `default_random_engine` and `uniform_int_distribution` are both
+// implementation-defined, so the same seed yields different data elsewhere.
+uint32_t get_seed_base();
+
 namespace std {
   inline std::ostream &operator<<(std::ostream &stream, const std::u16string &text) {
     for (uint16_t character : text) {

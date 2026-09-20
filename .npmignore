@@ -9,6 +9,7 @@
 !src/bindings/*.cc
 
 !script/fetch-libiconv-61.sh
+!script/copy-libiconv.sh
 
 !vendor/libcxx/*
 

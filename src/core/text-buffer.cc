@@ -373,6 +373,18 @@ struct TextBuffer::Layer {
               slice_to_search_start_position.traverse(match_end_position)
             };
 
+            // A match can begin on the LF of a CRLF pair whose CR lives in an
+            // earlier chunk. `position_for_offset` only ever looks within a
+            // single chunk, so it cannot see the CR and cannot clip the start
+            // itself. Points within CRLF line endings are not valid, so back
+            // the start up onto the CR here — the same adjustment made for
+            // match ends at a chunk boundary above, but for the other end.
+            if (last_match.start.column > 0 &&
+                character_at(last_match.start) == '\n' &&
+                character_at(previous_column(last_match.start)) == '\r') {
+              last_match.start.column--;
+            }
+
             last_search_end_position = last_match.end;
             if (match_end_position == match_start_position) {
               last_search_end_position.column++;

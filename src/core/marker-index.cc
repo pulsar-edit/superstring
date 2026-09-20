@@ -464,8 +464,21 @@ void MarkerIndex::set_exclusive(MarkerId id, bool exclusive) {
 }
 
 void MarkerIndex::remove(MarkerId id) {
-  Node *start_node = start_nodes_by_id.find(id)->second;
-  Node *end_node = end_nodes_by_id.find(id)->second;
+  // Both maps are populated and cleared together, but check each one anyway:
+  // `splice` reassigns them independently, so treat either miss as "we don't
+  // hold this marker." Dereferencing an `end()` iterator here is undefined —
+  // libc++ and libstdc++ represent it as a null node and crash immediately,
+  // while MSVC represents it as a live list sentinel whose value was never
+  // constructed, quietly yielding garbage that we then write through and free.
+  auto start_entry = start_nodes_by_id.find(id);
+  auto end_entry = end_nodes_by_id.find(id);
+  if (start_entry == start_nodes_by_id.end() ||
+      end_entry == end_nodes_by_id.end()) {
+    return;
+  }
+
+  Node *start_node = start_entry->second;
+  Node *end_node = end_entry->second;
 
   Node *node = start_node;
   while (node) {

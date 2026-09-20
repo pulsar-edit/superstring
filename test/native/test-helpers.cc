@@ -4,6 +4,8 @@
 #include "text-buffer.h"
 #include <catch_amalgamated.hpp>
 #include <cstring>
+#include <cstdlib>
+#include <ctime>
 #include <memory>
 #include <ostream>
 #include <vector>
@@ -36,7 +38,7 @@ std::unique_ptr<Text> get_text(const u16string content) {
 std::u16string get_random_string(Generator &rand, uint32_t character_count) {
   u16string content;
   content.reserve(character_count);
-  for (uint i = 0; i < character_count; i++) {
+  for (uint32_t i = 0; i < character_count; i++) {
     if (rand() % 20 < 1) {
       content.push_back('\n');
     } else if (rand() % 20 < 1) {
@@ -72,4 +74,11 @@ Range get_random_range(Generator &rand, const Text &text) {
 
 Range get_random_range(Generator &rand, TextBuffer &buffer) {
   return get_random_range(rand, buffer.text());
+}
+
+uint32_t get_seed_base() {
+  if (const char *seed = getenv("SUPERSTRING_TEST_SEED")) {
+    return static_cast<uint32_t>(strtoul(seed, nullptr, 10));
+  }
+  return static_cast<uint32_t>(time(nullptr) * 1000);
 }

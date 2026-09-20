@@ -534,4 +534,56 @@ describe('MarkerIndex', () => {
     let result = index.findEndingIn({row: 0, column: 0}, {row: Infinity, column: Infinity})
     assert(result.has(1))
   })
+
+  // `MarkerIndex::remove` dereferences the result of `unordered_map::find`
+  // without checking it against `end()`. For an id the index doesn't hold,
+  // libc++ and libstdc++ represent `end()` as a null node, so these calls
+  // segfault immediately; MSVC represents it as a live list sentinel whose
+  // value is never constructed, so on Windows the garbage read is silent and
+  // the process dies later, while `~MarkerIndex` tears the map down.
+  //
+  // These crash the process rather than throwing, so a failure here takes the
+  // whole mocha run down with it.
+  describe('remove with an unknown id', () => {
+    it('ignores an id that was never inserted', () => {
+      let index = new MarkerIndex(1)
+      index.insert(1, {row: 0, column: 0}, {row: 0, column: 5})
+
+      index.remove(999)
+
+      assert.isTrue(index.has(1))
+      assert.deepEqual(index.getRange(1), {start: {row: 0, column: 0}, end: {row: 0, column: 5}})
+    })
+
+    it('ignores a second removal of the same id', () => {
+      let index = new MarkerIndex(1)
+      index.insert(1, {row: 0, column: 0}, {row: 0, column: 5})
+
+      index.remove(1)
+      index.remove(1)
+
+      assert.isFalse(index.has(1))
+    })
+
+    it('ignores a removal from an empty index', () => {
+      let index = new MarkerIndex(1)
+
+      index.remove(1)
+
+      assert.isFalse(index.has(1))
+    })
+
+    it('leaves surrounding markers intact after a no-op removal', () => {
+      let index = new MarkerIndex(1)
+      index.insert(1, {row: 0, column: 0}, {row: 0, column: 5})
+      index.insert(2, {row: 1, column: 0}, {row: 1, column: 5})
+
+      index.remove(999)
+      index.remove(1)
+
+      assert.isFalse(index.has(1))
+      assert.isTrue(index.has(2))
+      assert.deepEqual(index.getRange(2), {start: {row: 1, column: 0}, end: {row: 1, column: 5}})
+    })
+  })
 })
