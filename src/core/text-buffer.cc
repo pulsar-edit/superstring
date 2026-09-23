@@ -395,6 +395,15 @@ struct TextBuffer::Layer {
             }
             minimum_match_row = last_search_end_position.row;
 
+            // Evaluate this *before* `chunk_continuation` is mutated below.
+            // `slice_to_search` may be a view over `chunk_continuation`, and
+            // clearing or reassigning it shrinks the line offsets the view's
+            // `end_position` still refers to — reading through the view after
+            // that point runs off the end of the buffer.
+            bool match_ends_with_cr_at_chunk_end =
+              match_result.end_offset == slice_to_search.size() &&
+              slice_to_search.back() == '\r';
+
             slice_to_search_start_position = last_search_end_position;
             if (slice_to_search_start_position >= chunk_start_position) {
               chunk_continuation.clear();
@@ -404,7 +413,7 @@ struct TextBuffer::Layer {
 
             // If the match ends with a CR at the end of a chunk, continue looking
             // at the next chunk, in case that chunk starts with an LF.
-            if (match_result.end_offset == slice_to_search.size() && slice_to_search.back() == '\r') {
+            if (match_ends_with_cr_at_chunk_end) {
               last_match_is_pending = true;
               continue;
             }

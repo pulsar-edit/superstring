@@ -279,6 +279,18 @@ void Text::append(TextSlice slice) {
 }
 
 void Text::assign(TextSlice slice) {
+  // `TextBuffer::Layer::scan_in_range` calls this with a slice of the very Text
+  // being assigned to — `chunk_continuation.assign(slice_to_search.suffix(...))`
+  // where `slice_to_search` is a TextSlice over `chunk_continuation`. The body
+  // below reads `slice.text->line_offsets` *after* clearing `line_offsets`, so
+  // when the two alias it reads the vector it has just emptied, and assigns
+  // `content` from a range that overlaps itself. Build through a temporary in
+  // that case, while the source is still intact.
+  if (slice.text == this) {
+    *this = Text{slice};
+    return;
+  }
+
   uint32_t slice_start_offset = slice.start_offset();
 
   content.assign(
