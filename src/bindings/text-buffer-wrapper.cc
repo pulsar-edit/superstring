@@ -1022,6 +1022,15 @@ void TextBufferWrapper::load(const CallbackInfo &info) {
   worker->Queue();
 }
 
+// The lengths must be compared first: the three-iterator `std::equal` walks
+// only `file_contents`, so it would report a match for any file that is a
+// prefix of the base text (including an empty one) and read past the end of
+// the base text for any file that is longer.
+static bool base_text_matches(const u16string &file_contents, const Text &base_text) {
+  return file_contents.size() == base_text.size() &&
+    std::equal(file_contents.begin(), file_contents.end(), base_text.begin());
+}
+
 class BaseTextComparisonWorker : public AsyncWorker {
   TextBuffer::Snapshot *snapshot;
   string file_name;
@@ -1040,7 +1049,7 @@ class BaseTextComparisonWorker : public AsyncWorker {
 
   void Execute() override {
     u16string file_contents = load_file(file_name, encoding_name, &error, [](size_t progress) {});
-    result = std::equal(file_contents.begin(), file_contents.end(), snapshot->base_text().begin());
+    result = base_text_matches(file_contents, snapshot->base_text());
   }
 
   void OnOK() override {
@@ -1076,7 +1085,7 @@ void TextBufferWrapper::base_text_matches_file(const CallbackInfo &info) {
     ))->Queue();
   } else {
     auto file_contents = TextWriter::Unwrap(info[1].As<Object>())->get_text();
-    bool result = std::equal(file_contents.begin(), file_contents.end(), text_buffer.base_text().begin());
+    bool result = base_text_matches(file_contents, text_buffer.base_text());
     auto callback = info[0].As<Function>();
     callback.Call({env.Null(), Boolean::New(env, result)});
   }

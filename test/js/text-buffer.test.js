@@ -452,6 +452,31 @@ describe('TextBuffer', () => {
         assert.notOk(result)
       })
     })
+
+    const lengthCases = [
+      {description: 'an empty file against a non-empty base text', baseText: 'abc', fileContent: '', expected: false},
+      {description: 'a file that is a prefix of the base text', baseText: 'abcdef', fileContent: 'abc', expected: false},
+      {description: 'a file that extends the base text', baseText: 'abc', fileContent: 'abcdef', expected: false},
+      {description: 'an empty file against an empty base text', baseText: '', fileContent: '', expected: true},
+      {description: 'a file identical to the base text', baseText: 'abcdef', fileContent: 'abcdef', expected: true}
+    ]
+
+    const sources = {
+      'file path': (filePath) => filePath,
+      'stream': (filePath) => fs.createReadStream(filePath)
+    }
+
+    for (const [sourceName, toSource] of Object.entries(sources)) {
+      for (const {description, baseText, fileContent, expected} of lengthCases) {
+        it(`reports ${expected ? 'a match' : 'no match'} for ${description} (${sourceName})`, async () => {
+          const buffer = new TextBuffer(baseText)
+          const {path: filePath} = temp.openSync()
+          fs.writeFileSync(filePath, fileContent)
+
+          assert.equal(await buffer.baseTextMatchesFile(toSource(filePath)), expected)
+        })
+      }
+    }
   })
 
   describe('.loadSync', () => {
