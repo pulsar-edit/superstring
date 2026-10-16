@@ -361,6 +361,17 @@ Patch::Patch(Deserializer &input) :
       i++;
       break;
     case Up:
+      // Malformed input: an `Up` with no parent to return to. `serialize` only
+      // ever emits `Up` while the stack is non-empty, so this cannot happen for
+      // a payload this library produced — but reading and popping an empty
+      // vector would leave its end pointer below its beginning, and the next
+      // push would write outside the allocation. Bail out with a destructible,
+      // empty Patch instead.
+      if (node_stack.empty()) {
+        delete_node(&root);
+        change_count = 0;
+        return;
+      }
       node->compute_subtree_text_sizes();
       node = node_stack.back();
       node_stack.pop_back();

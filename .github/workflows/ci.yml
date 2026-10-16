@@ -83,6 +83,72 @@ jobs:
       - name: Run native tests
         run: npm run test:native
 
+  # Runs both suites under AddressSanitizer. Linux only, and deliberately so:
+  # `LD_PRELOAD` works here without the SIP restrictions that complicate macOS,
+  # and one platform is enough for a check that catches platform-independent
+  # memory errors. It found two long-standing heap-buffer-overflows in the
+  # regex search path that the ordinary suites reported as passing.
+  Sanitize:
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    runs-on: ubuntu-latest
+    name: AddressSanitizer
+
+    env:
+      # `-fsanitize-recover` plus `halt_on_error=0` reports every error rather
+      # than aborting at the first, so one run gives the full inventory. That
+      # also means ASan no longer sets a failing exit code, so the steps below
+      # grep the output and fail explicitly.
+      ASAN_OPTIONS: detect_leaks=0:halt_on_error=0:detect_odr_violation=0
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      - name: Setup node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install Python setuptools
+        # Reasoning for this in the Test job above.
+        run: python3 -m pip install --break-system-packages setuptools
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build instrumented
+        env:
+          CFLAGS: -fsanitize=address -fsanitize-recover=address -fno-omit-frame-pointer -g
+          CXXFLAGS: -fsanitize=address -fsanitize-recover=address -fno-omit-frame-pointer -g
+          LDFLAGS: -fsanitize=address -fsanitize-recover=address
+        # One build, not two: `node-gyp rebuild` cleans the whole `build`
+        # directory first, so a second invocation would delete the first's
+        # output. `--debug --tests` produces both `build/Debug/tests` and
+        # `build/Debug/superstring.node`, and `index.js` falls back to the
+        # Debug addon when there is no Release one — so both suites below run
+        # against the instrumented build.
+        run: npx node-gyp rebuild --debug --tests
+
+      - name: Native suite under ASan
+        run: |
+          set -o pipefail
+          ./build/Debug/tests 2>&1 | tee asan-native.log
+          if grep -q 'ERROR: AddressSanitizer' asan-native.log; then
+            echo '::error::AddressSanitizer reported errors in the native suite'
+            exit 1
+          fi
+
+      - name: JS suite under ASan
+        run: |
+          set -o pipefail
+          LD_PRELOAD="$(gcc -print-file-name=libasan.so)" \
+            node node_modules/mocha/bin/_mocha test/js/*.test.js 2>&1 | tee asan-js.log
+          if grep -q 'ERROR: AddressSanitizer' asan-js.log; then
+            echo '::error::AddressSanitizer reported errors in the JS suite'
+            exit 1
+          fi
+
   Skip:
     if: contains(github.event.head_commit.message, '[skip ci]')
     runs-on: ubuntu-latest
