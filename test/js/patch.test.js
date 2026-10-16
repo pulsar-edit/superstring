@@ -390,6 +390,34 @@ describe('Patch', function () {
       }
     }
   })
+
+  // These splices start at (0, 30), which lies past the end of the first row
+  // of the existing change's new text ('abc'). Clamping a slice of that text
+  // to (0, 30) keeps the row in range but not the column, so the slice's end
+  // offset runs past the end of the text; the splice must be rejected rather
+  // than copying whatever memory follows it.
+  it('rejects a splice that starts past the end of a row within a change it overlaps', () => {
+    const patch = new Patch()
+    patch.splice({row: 0, column: 0}, {row: 0, column: 0}, {row: 1, column: 1}, '', 'abc\nd')
+    const currentChanges = patch.getChanges()
+
+    assert.throws(() => {
+      patch.splice({row: 0, column: 30}, {row: 1, column: 0}, {row: 0, column: 1}, '', 'x')
+    }, 'Patch does not apply')
+    assert.deepEqual(patch.getChanges(), currentChanges)
+  })
+
+  it('rejects a splice that starts past the end of a row within the change preceding it', () => {
+    const patch = new Patch()
+    patch.splice({row: 0, column: 0}, {row: 0, column: 0}, {row: 1, column: 1}, '', 'abc\nd')
+    patch.splice({row: 5, column: 0}, {row: 0, column: 0}, {row: 0, column: 1}, '', 'q')
+    const currentChanges = patch.getChanges()
+
+    assert.throws(() => {
+      patch.splice({row: 0, column: 30}, {row: 2, column: 0}, {row: 0, column: 1}, '', 'x')
+    }, 'Patch does not apply')
+    assert.deepEqual(patch.getChanges(), currentChanges)
+  })
 })
 
 function last (array) {

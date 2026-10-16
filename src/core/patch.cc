@@ -552,7 +552,7 @@ bool Patch::splice(Point new_splice_start,
         TextSlice new_text_suffix = TextSlice(*upper_bound->new_text).suffix(
           new_deletion_end.traversal(upper_bound_new_start)
         );
-        if (!new_text_suffix.is_valid()) return false;
+        if (!new_text_prefix.is_valid() || !new_text_suffix.is_valid()) return false;
         upper_bound->set_new_text(
           Text::concat(new_text_prefix, *inserted_text, new_text_suffix)
         );
@@ -612,18 +612,22 @@ bool Patch::splice(Point new_splice_start,
       Point new_extent_prefix =
         new_splice_start.traversal(lower_bound_new_start);
 
+      // Build and validate the new text before mutating either bound, so that
+      // an inconsistent splice is rejected without leaving the tree half-updated.
+      optional<Text> new_text;
+      if (inserted_text && lower_bound->new_text) {
+        TextSlice new_text_prefix = TextSlice(*lower_bound->new_text).prefix(new_extent_prefix);
+        if (!new_text_prefix.is_valid()) return false;
+        new_text = Text::concat(new_text_prefix, *inserted_text);
+      }
+
       upper_bound->new_distance_from_left_ancestor =
         new_insertion_end.traverse(upper_bound_new_start.traversal(new_deletion_end));
       lower_bound->old_extent =
           old_deletion_end.traversal(lower_bound_old_start);
       lower_bound->new_extent =
           new_extent_prefix.traverse(new_insertion_extent);
-      if (inserted_text && lower_bound->new_text) {
-        TextSlice new_text_prefix = TextSlice(*lower_bound->new_text).prefix(new_extent_prefix);
-        lower_bound->set_new_text(Text::concat(new_text_prefix, *inserted_text));
-      } else {
-        lower_bound->set_new_text(optional<Text>{});
-      }
+      lower_bound->set_new_text(move(new_text));
 
       lower_bound->set_old_text(move(old_text), old_text_size);
       delete_node(&lower_bound->right);
