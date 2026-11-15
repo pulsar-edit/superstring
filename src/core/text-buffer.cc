@@ -664,7 +664,7 @@ struct TextBuffer::Layer {
     bool result = false;
     uint32_t start_offset = 0;
     for_each_chunk_in_range(Point(), extent(), [&](TextSlice chunk) {
-      if (chunk.text == &(*base_layer->text) ||
+      if ((chunk.text == &(*base_layer->text) && chunk.start_offset() == start_offset) ||
           equal(chunk.begin(), chunk.end(), base_layer->text->begin() + start_offset)) {
         start_offset += chunk.size();
         return false;
