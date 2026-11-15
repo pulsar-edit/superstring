@@ -198,6 +198,43 @@ TEST_CASE("TextBuffer::is_modified") {
   }
 }
 
+TEST_CASE("TextBuffer::is_modified - base text shifted to a new offset") {
+  SECTION("delete the first char, append a copy of the last") {
+    TextBuffer buffer{u"abc"};
+    buffer.set_text_in_range({{0, 0}, {0, 1}}, u"");
+    buffer.set_text_in_range({{0, 2}, {0, 2}}, u"c");
+    REQUIRE(buffer.text() == u"bcc");
+    REQUIRE(buffer.is_modified());
+  }
+
+  SECTION("same, longer text") {
+    TextBuffer buffer{u"hello world"};
+    buffer.set_text_in_range({{0, 0}, {0, 1}}, u"");
+    buffer.set_text_in_range({{0, 10}, {0, 10}}, u"d");
+    REQUIRE(buffer.text() == u"ello worldd");
+    REQUIRE(buffer.is_modified());
+  }
+
+  SECTION("compared against a snapshot") {
+    TextBuffer buffer{u"abc"};
+    auto snapshot = buffer.create_snapshot();
+    buffer.set_text_in_range({{0, 0}, {0, 1}}, u"");
+    buffer.set_text_in_range({{0, 2}, {0, 2}}, u"c");
+    REQUIRE(buffer.text() == u"bcc");
+    REQUIRE(buffer.is_modified(snapshot));
+    delete snapshot;
+  }
+
+  SECTION("delete a char and retype it: still unmodified") {
+    TextBuffer buffer{u"abc"};
+    buffer.set_text_in_range({{0, 1}, {0, 2}}, u"");
+    REQUIRE(buffer.is_modified());
+    buffer.set_text_in_range({{0, 1}, {0, 1}}, u"b");
+    REQUIRE(buffer.text() == u"abc");
+    REQUIRE(!buffer.is_modified());
+  }
+}
+
 TEST_CASE("TextBuffer::flush_changes") {
   TextBuffer buffer{u"abcdef"};
   REQUIRE(buffer.layer_count() == 1);

@@ -774,6 +774,29 @@ describe('TextBuffer', () => {
       buffer.setText('abc')
       assert.notOk(buffer.isModified())
     })
+
+    it('reports a deleted-then-retyped character as unmodified', () => {
+      const buffer = new TextBuffer('abc')
+      buffer.setTextInRange(Range(Point(0, 1), Point(0, 2)), '')
+      assert.ok(buffer.isModified())
+      buffer.setTextInRange(Range(Point(0, 1), Point(0, 1)), 'b')
+      assert.equal(buffer.getText(), 'abc')
+      assert.notOk(buffer.isModified())
+    })
+
+    it('detects changes that shift base text to a new offset without changing the length', () => {
+      const buffer = new TextBuffer('abc')
+      buffer.setTextInRange(Range(Point(0, 0), Point(0, 1)), '')
+      buffer.setTextInRange(Range(Point(0, 2), Point(0, 2)), 'c')
+      assert.equal(buffer.getText(), 'bcc')
+      assert.ok(buffer.isModified())
+
+      const buffer2 = new TextBuffer('hello world')
+      buffer2.setTextInRange(Range(Point(0, 0), Point(0, 1)), '')
+      buffer2.setTextInRange(Range(Point(0, 10), Point(0, 10)), 'd')
+      assert.equal(buffer2.getText(), 'ello worldd')
+      assert.ok(buffer2.isModified())
+    })
   })
 
   describe('.setTextInRange', () => {
